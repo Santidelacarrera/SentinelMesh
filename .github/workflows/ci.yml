@@ -1,0 +1,59 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    services:
+      redis: { image: "redis:7-alpine", ports: ["6379:6379"] }
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_PASSWORD: ci, POSTGRES_DB: sm }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Start AWS API emulator (moto) and prepare database
+        run: |
+          # isolated venv: the runner's system pyOpenSSL/boto3 clash with moto's dependencies
+          python3 -m venv /tmp/moto-venv
+          /tmp/moto-venv/bin/pip install -q "moto[server,s3,secretsmanager,wafv2,iam,kms,ec2]"
+          (/tmp/moto-venv/bin/moto_server -p 5555 > /tmp/moto.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf localhost:5555/moto-api/ >/dev/null && break; sleep 1; done
+          curl -sf localhost:5555/moto-api/ >/dev/null || { cat /tmp/moto.log; exit 1; }
+          export PGPASSWORD=ci
+          psql -h localhost -U postgres -d sm -v ON_ERROR_STOP=1 -f db/schema.sql
+          psql -h localhost -U postgres -d sm -v ON_ERROR_STOP=1 -f db/roles.sql
+      - run: npm test
+        env:
+          REDIS_URL: "redis://localhost:6379"
+          AWS_TEST_ENDPOINT: "http://localhost:5555"
+          TEST_DATABASE_URL: "postgres://sentinel_app:dev-only-app@localhost:5432/sm"
+          TEST_DATABASE_ADMIN_URL: "postgres://postgres:ci@localhost:5432/sm"
+      - run: npm run build
+      - run: npm run simulate
+  python:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: services/analytics } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install -r requirements.txt && pytest -q
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm test -w apps/web
+      - run: npm run build -w apps/web
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: npm run e2e -w apps/web
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: console-screenshots, path: apps/web/shots }

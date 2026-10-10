@@ -1,0 +1,36 @@
+# Local dev stack. Secrets below are throwaway dev values — override via .env for anything shared.
+services:
+  redis:
+    image: redis:7-alpine
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_PASSWORD: dev-only, POSTGRES_DB: sentinelmesh }
+    volumes: ["./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro", "./db/roles.sql:/docker-entrypoint-initdb.d/02-roles.sql:ro"]
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment: { MINIO_ROOT_USER: dev-only, MINIO_ROOT_PASSWORD: dev-only-secret }
+    ports: ["9001:9001"]
+  minio-init:
+    image: minio/mc
+    profiles: [init]
+    depends_on: [minio]
+    entrypoint: ["/bin/sh", "-c", "mc alias set l http://minio:9000 dev-only dev-only-secret && mc mb -p l/sentinel-evidence"]
+  analytics:
+    build: ./services/analytics
+  api:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    environment:
+      NODE_ENV: development
+      REDIS_URL: redis://redis:6379
+      ANALYTICS_URL: http://analytics:8000
+      DATABASE_URL: postgres://sentinel_app:dev-only-app@postgres:5432/sentinelmesh
+      # Evidence in MinIO (S3 API). Create the bucket once: `docker compose --profile init run --rm minio-init`
+      OBJECT_STORE_BUCKET: sentinel-evidence
+      AWS_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: dev-only
+      AWS_SECRET_ACCESS_KEY: dev-only-secret
+      AWS_REGION: us-east-1
+      APPROVAL_SIGNING_KEY: ${APPROVAL_SIGNING_KEY:-dev-only-change-me}
+    depends_on: [redis, analytics, postgres, minio]
+    ports: ["3000:3000"]

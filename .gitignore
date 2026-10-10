@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+.venv
+__pycache__
+.pytest_cache
+*.tsbuildinfo
+.env
+.terraform
+data/
+shots
+test-results
