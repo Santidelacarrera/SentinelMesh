@@ -29,7 +29,7 @@ export class CoreHandlers implements OnModuleInit {
       return { active: created['newVersion'] };
     });
     e.register('healthcheck', async (c) => {
-      const id = String(c.input['credentialId']); const cred = this.db.credentials.get(c.orgId, id);
+      const id = String(c.input['credentialId']); const cred = await this.db.credentials.get(c.orgId, id);
       const created = outputOf(c, 'create_credential')!;
       let last = { healthy: false, detail: 'no attempt' };
       for (let i = 0; i < 3; i++) {
@@ -49,11 +49,11 @@ export class CoreHandlers implements OnModuleInit {
       if (created['previousVersion'] === active) throw new TerminalStepError('refusing to revoke the active credential');
       if (!(await this.secrets.isValid(id, active))) throw new TerminalStepError('active credential is not valid; refusing to revoke the fallback');
       await this.secrets.revokeVersion(id, created['previousVersion'], c.proof!);
-      this.db.credentials.update(c.orgId, id, (r) => { r.currentVersion = active; r.status = 'active'; });
+      await this.db.credentials.update(c.orgId, id, (r) => { r.currentVersion = active; r.status = 'active'; });
       return { revoked: created['previousVersion'], active };
     });
-    e.register('apply_waf_rule', async (c) => this.infra.applyWafRule(c.plan!.params, c.proof!));
-    e.register('apply_iam_policy', async (c) => this.infra.applyIamPolicy(c.plan!.params, c.proof!));
-    e.register('isolate_service', async (c) => this.infra.isolateService(c.plan!.targetRef, c.proof!));
+    e.register('apply_waf_rule', async (c) => this.infra.applyWafRule(c.plan!.params, c.proof!, c.plan));
+    e.register('apply_iam_policy', async (c) => this.infra.applyIamPolicy(c.plan!.params, c.proof!, c.plan));
+    e.register('isolate_service', async (c) => this.infra.isolateService(c.plan!.targetRef, c.proof!, c.plan));
   }
 }

@@ -25,8 +25,8 @@ const SEV: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
 export class IngestService {
   constructor(private db: Db, private analytics: AnalyticsClient, @Inject(OBJECT_STORAGE) private storage: ObjectStorage, private audit: AuditTrail) {}
 
-  upsertAsset(orgId: string, a: z.infer<typeof AssetSchema>): AssetContext {
-    const ex = this.db.assets.list(orgId, (x) => x.name === a.name)[0];
+  async upsertAsset(orgId: string, a: z.infer<typeof AssetSchema>): Promise<AssetContext> {
+    const ex = (await this.db.assets.where(orgId, { name: a.name }))[0];
     return this.db.assets.put({ ...a, id: ex?.id ?? newId('ast'), orgId });
   }
 
@@ -44,26 +44,27 @@ export class IngestService {
     const result = { created: 0, duplicates: 0, suppressed: 0 };
     for (const raw of raws) {
       const fp = fingerprint(raw);
-      if (this.db.findings.list(orgId, (f) => f.fingerprint === fp && f.status !== 'resolved').length) { result.duplicates++; continue; }
-      const asset = raw.assetName ? this.db.assets.list(orgId, (a) => a.name === raw.assetName)[0] : undefined;
+      const asset = raw.assetName ? (await this.db.assets.where(orgId, { name: raw.assetName }))[0] : undefined;
       const c = await this.analytics.correlate({ ruleId: raw.ruleId, kind: raw.kind, severity: raw.severity, likelyFalsePositive: raw.likelyFalsePositive, asset });
-      let credentialId: string | undefined;
-      if (raw.kind === 'secret' && !c.suppressed) {
-        const cred: CredentialRecord = { id: newId('cred'), orgId, name: raw.title, service: raw.assetName ?? 'unknown', kind: 'api_key', currentVersion: 1, maskedValue: raw.maskedSecret!, status: 'exposed' };
-        credentialId = this.db.credentials.put(cred).id;
-      }
       const f: Finding = {
         id: newId('fnd'), orgId, scanId, kind: raw.kind, fingerprint: fp, ruleId: raw.ruleId, title: raw.title, description: raw.description,
         baseSeverity: raw.severity, severity: c.severity, exposureScore: c.exposureScore, assetName: raw.assetName, location: raw.location,
         status: c.suppressed ? 'suppressed' : 'open', suppressionReason: c.suppressionReason, rationale: c.rationale,
-        maskedSecret: raw.maskedSecret, credentialId, remediationPlanIds: [], createdAt: now(),
+        maskedSecret: raw.maskedSecret, remediationPlanIds: [], createdAt: now(),
       };
-      this.db.findings.put(f);
+      // The unique index on the open fingerprint decides races between replicas: exactly one ingest creates the finding.
+      const { row, created } = await this.db.findings.createUnique(f, { fingerprint: fp });
+      if (!created) { result.duplicates++; continue; }
+      if (raw.kind === 'secret' && !c.suppressed) {
+        const cred: CredentialRecord = { id: newId('cred'), orgId, name: raw.title, service: raw.assetName ?? 'unknown', kind: 'api_key', currentVersion: 1, maskedValue: raw.maskedSecret!, status: 'exposed' };
+        await this.db.credentials.put(cred);
+        await this.db.findings.update(orgId, row.id, { credentialId: cred.id });
+      }
       c.suppressed ? result.suppressed++ : result.created++;
     }
     scan.findingCount = result.created + result.suppressed;
-    this.db.scans.put(scan);
-    this.audit.append(orgId, actor, 'scan.ingested', { scanId, source: input.source, format: input.format, reportSha256: scan.reportSha256, ...result });
+    await this.db.scans.put(scan);
+    await this.audit.append(orgId, actor, 'scan.ingested', { scanId, source: input.source, format: input.format, reportSha256: scan.reportSha256, ...result });
     return { scanId, reportRef, ...result };
   }
 
@@ -75,8 +76,8 @@ export class IngestService {
     return r;
   }
 
-  summary(orgId: string) {
-    const all = this.db.findings.list(orgId);
+  async summary(orgId: string) {
+    const all = await this.db.findings.list(orgId);
     const open = all.filter((f) => f.status === 'open' || f.status === 'remediating');
     const bySeverity = Object.fromEntries(SEV.map((s) => [s, open.filter((f) => f.severity === s).length]));
     const byAsset: Record<string, number> = {};
@@ -87,11 +88,11 @@ export class IngestService {
   }
 
   /** Full traceability: finding → originating report → mitigation plans. */
-  trace(orgId: string, findingId: string) {
-    const finding = this.db.findings.get(orgId, findingId);
+  async trace(orgId: string, findingId: string) {
+    const finding = await this.db.findings.get(orgId, findingId);
     if (!finding) throw new NotFoundException('finding not found');
-    const scan = this.db.scans.get(orgId, finding.scanId);
-    const plans = finding.remediationPlanIds.map((id) => this.db.plans.get(orgId, id)).filter(Boolean);
+    const scan = await this.db.scans.get(orgId, finding.scanId);
+    const plans = (await Promise.all(finding.remediationPlanIds.map((id) => this.db.plans.get(orgId, id)))).filter(Boolean);
     return { finding, scan, plans };
   }
 }

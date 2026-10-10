@@ -3,6 +3,7 @@ import { Db } from '../store/db';
 import { DryRunPlan, PolicyDoc } from '../store/models';
 import { newId, now, sha256, stableStringify } from '../common/ids';
 import { redact } from '../common/mask';
+import { TerraformPlanner } from '../terraform/planner';
 
 export type PlanKind = DryRunPlan['kind'];
 export interface SimulateInput { kind: Exclude<PlanKind, 'terraform'>; targetRef: string; params: Record<string, unknown>; sourceFindingId?: string }
@@ -15,13 +16,15 @@ const ACTION_BY_KIND = { waf: 'apply_waf_rule', iam: 'apply_iam_policy', isolati
  */
 @Injectable()
 export class DryRunService {
-  constructor(private db: Db) {}
+  constructor(private db: Db, private planner: TerraformPlanner) {}
 
-  static planHash(p: Pick<DryRunPlan, 'kind' | 'targetRef' | 'action' | 'params' | 'diff'>) {
-    return sha256(stableStringify({ kind: p.kind, targetRef: p.targetRef, action: p.action, params: p.params, diff: p.diff }));
+  static planHash(p: Pick<DryRunPlan, 'kind' | 'targetRef' | 'action' | 'params' | 'diff' | 'tf'>) {
+    // The Terraform part is in the hash: the signature covers the HCL and (when planned) the exact resource changes Terraform computed.
+    const tf = p.tf && { filesHash: p.tf.filesHash, changesHash: p.tf.changesHash ?? null, planSha256: p.tf.planSha256 ?? null };
+    return sha256(stableStringify({ kind: p.kind, targetRef: p.targetRef, action: p.action, params: p.params, diff: p.diff, tf }));
   }
 
-  simulate(orgId: string, i: SimulateInput): DryRunPlan {
+  async simulate(orgId: string, i: SimulateInput): Promise<DryRunPlan> {
     const params = redact(i.params);
     let diff: string, terraform: string, destructive = true;
     switch (i.kind) {
@@ -30,8 +33,12 @@ export class DryRunService {
       case 'isolation': ({ diff, terraform } = this.isolation(i.targetRef)); break;
       case 'rotation': ({ diff, terraform } = this.rotation(i.targetRef, params)); break;
     }
-    const base = { kind: i.kind, targetRef: i.targetRef, action: ACTION_BY_KIND[i.kind], params, diff };
-    const plan: DryRunPlan = { id: newId('plan'), orgId, ...base, terraform, planHash: DryRunService.planHash(base), destructive, applied: false, sourceFindingId: i.sourceFindingId, createdAt: now() };
+    const id = newId('plan');
+    let tf: DryRunPlan['tf'];
+    const hcl = this.planner.filesFor(i.kind, i.targetRef, params);
+    if (hcl) { tf = await this.planner.plan(orgId, id, hcl.stack, hcl.files); terraform = hcl.files['main.tf']; }
+    const base = { kind: i.kind, targetRef: i.targetRef, action: ACTION_BY_KIND[i.kind], params, diff, ...(tf ? { tf } : {}) };
+    const plan: DryRunPlan = { id, orgId, ...base, terraform, planHash: DryRunService.planHash(base), destructive, applied: false, sourceFindingId: i.sourceFindingId, createdAt: now() };
     return this.db.plans.put(plan);
   }
 

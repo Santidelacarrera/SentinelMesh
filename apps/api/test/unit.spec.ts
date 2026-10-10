@@ -34,15 +34,21 @@ describe('SSRF defence', () => {
 });
 
 describe('audit trail', () => {
-  it('chains hashes, redacts payloads, and detects tampering', () => {
+  it('chains hashes, redacts payloads, and detects tampering', async () => {
     const a = new AuditTrail();
-    a.append('o', 'u', 'e1', { password: 'p4ssw0rd!' });
-    a.append('o', 'u', 'e2', { note: 'AKIAIOSFODNN7EXAMPLE' });
-    expect(JSON.stringify(a.list('o'))).not.toMatch(/p4ssw0rd|AKIAIOSFODNN7EXAMPLE/);
-    expect(a.verify('o').ok).toBe(true);
-    expect(() => { (a.list('o')[0] as any).event = 'tampered'; }).toThrow(); // frozen entries
-    (a as any).chains.get('o')[0] = { ...a.list('o')[0], event: 'tampered' };
-    expect(a.verify('o')).toEqual({ ok: false, brokenAt: 1 });
+    await a.append('o', 'u', 'e1', { password: 'p4ssw0rd!' });
+    await a.append('o', 'u', 'e2', { note: 'AKIAIOSFODNN7EXAMPLE' });
+    expect(JSON.stringify(await a.list('o'))).not.toMatch(/p4ssw0rd|AKIAIOSFODNN7EXAMPLE/);
+    expect((await a.verify('o')).ok).toBe(true);
+    a.memory._tamper('o', 0, { event: 'tampered' });
+    expect(await a.verify('o')).toEqual({ ok: false, brokenAt: 1 });
+  });
+  it('concurrent appends never fork the chain', async () => {
+    const a = new AuditTrail();
+    await Promise.all(Array.from({ length: 25 }, (_, i) => a.append('o', 'u', `e${i}`)));
+    const l = await a.list('o');
+    expect(l.map((e) => e.seq)).toEqual(Array.from({ length: 25 }, (_, i) => i + 1));
+    expect((await a.verify('o')).ok).toBe(true);
   });
 });
 
@@ -68,7 +74,10 @@ describe('production guard', () => {
   it('refuses simulated ports in production', async () => {
     const { Test } = await import('@nestjs/testing'); const { AppModule } = await import('../src/app.module');
     const prev = { ...process.env }; process.env.NODE_ENV = 'production'; process.env.APPROVAL_SIGNING_KEY = 'k'; delete process.env.INFRA_MODE;
-    try { await expect(Test.createTestingModule({ imports: [AppModule] }).compile()).rejects.toThrow(/INFRA_MODE=aws/); }
+    try { await expect(Test.createTestingModule({ imports: [AppModule] }).compile()).rejects.toThrow(/INFRA_MODE=aws/);
+      const { productionProblems } = await import('../src/ports.config');
+      expect(productionProblems({ NODE_ENV: 'production', INFRA_MODE: 'aws', DATABASE_URL: 'x', REDIS_URL: 'x', OBJECT_STORE_BUCKET: 'b', TERRAFORM_ENABLED: '1' } as any)).toEqual([expect.stringContaining('TF_BACKEND_HCL')]);
+      expect(productionProblems({ NODE_ENV: 'development' } as any)).toEqual([]); }
     finally { process.env = prev; }
   });
 });

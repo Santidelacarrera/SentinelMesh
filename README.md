@@ -58,7 +58,8 @@ En producción define `SENTINEL_API_KEYS` y `APPROVAL_SIGNING_KEY` (obligatorio)
 |---|---|
 | `REDIS_URL` | cola BullMQ y lock distribuido contra Redis |
 | `AWS_TEST_ENDPOINT` (p. ej. `moto_server -p 5555`) | adaptadores S3/Secrets Manager/WAFv2/IAM/EC2/KMS y flujos completos |
-| `TEST_DATABASE_URL` (+ `TEST_DATABASE_ADMIN_URL`) | persistencia Postgres y RLS (`db/schema.sql` + `db/roles.sql` aplicados) |
+| `TEST_DATABASE_URL` (+ `TEST_DATABASE_ADMIN_URL`) | repositorios Postgres con dos réplicas, carreras y RLS (`db/schema.sql` + `db/roles.sql` aplicados) |
+| `TF_TEST_BIN` (+ `AWS_TEST_ENDPOINT`) | `terraform plan/apply` real contra el emulador (en local sin registro: `TF_TEST_RC` con un espejo de proveedor y `TF_TEST_AWS_VERSION`) |
 
 Producción: `INFRA_MODE=aws`, OIDC (`OIDC_ISSUER`…), firma KMS/Ed25519 y Postgres; ver [`docs/architecture.md`](docs/architecture.md).
 

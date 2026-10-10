@@ -41,6 +41,8 @@ export interface DryRunPlan {
   id: string; orgId: string; kind: 'waf' | 'iam' | 'terraform' | 'rotation' | 'isolation';
   targetRef: string; action: ActionType; params: Record<string, unknown>;
   diff: string; terraform?: string; planHash: string; destructive: boolean; applied: boolean; sourceFindingId?: string; createdAt: string;
+  /** Real Terraform for waf/iam: the HCL, and (when Terraform is enabled) the saved plan that will be applied after approval. */
+  tf?: { stack: string; files: Record<string, string>; filesHash: string; changesHash?: string; summary?: { add: number; change: number; destroy: number }; text?: string; planRef?: string; planSha256?: string; noChanges?: boolean };
 }
 
 export type StepStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped' | 'awaiting_approval';

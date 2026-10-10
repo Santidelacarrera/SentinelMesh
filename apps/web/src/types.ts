@@ -9,7 +9,7 @@ export interface Finding {
 }
 export interface Asset { id: string; name: string; internetFacing: boolean; behindGateway: boolean; handlesCriticalData: boolean; environment: 'prod' | 'staging' | 'dev' }
 export interface Summary { totals: { open: number; suppressed: number; secrets: number }; bySeverity: Record<Severity, number>; byAsset: Record<string, number> }
-export interface Plan { id: string; kind: 'waf' | 'iam' | 'isolation' | 'rotation' | 'terraform'; targetRef: string; action: string; params: Record<string, any>; diff: string; terraform?: string; planHash: string; applied: boolean; destructive: boolean; createdAt: string }
+export interface Plan { id: string; kind: 'waf' | 'iam' | 'isolation' | 'rotation' | 'terraform'; targetRef: string; action: string; params: Record<string, any>; diff: string; terraform?: string; planHash: string; applied: boolean; destructive: boolean; createdAt: string; tf?: { stack: string; summary?: { add: number; change: number; destroy: number }; text?: string; planRef?: string; noChanges?: boolean } }
 export interface StepView { name: string; action: string; status: 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped' | 'awaiting_approval'; destructive: boolean; attempts?: number; error?: string; output?: Record<string, unknown>; startedAt?: string; finishedAt?: string }
 export interface Approval {
   id: string; executionId: string; stepName: string; planId: string; planHash: string; status: 'pending' | 'approved' | 'rejected';
