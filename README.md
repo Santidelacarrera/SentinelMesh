@@ -8,7 +8,7 @@ simula el cambio (diff / Terraform) → ejecuta de forma idempotente **solo tras
 | Capa | Tecnología | Ruta |
 |---|---|---|
 | API / control plane + motor | NestJS, BullMQ/Redis | `apps/api` |
-| Panel (exposición, bandeja, forense, IAM) | React + TypeScript (Vite) | `apps/web` |
+| Consola SecOps (resumen y mapa de exposición, hallazgos con su porqué, decisiones con firma, ejecuciones, incidentes, identidades, credenciales, auditoría) | React + TypeScript (Vite) | `apps/web` |
 | Analítica y contexto | Python + FastAPI | `services/analytics` |
 | Datos | PostgreSQL (`db/schema.sql`, RLS), S3/MinIO (contrato `ObjectStorage`) | `db/` |
 | Infra | Docker Compose, Terraform de ejemplo | `docker-compose.yml`, `infra/` |
@@ -28,7 +28,8 @@ dispara un brute-force, congela la evidencia, muestra la bandeja con los diffs y
 ```bash
 docker compose up --build      # api :3000, redis, postgres, minio, analytics
 npm run dev -w apps/api        # o sin Docker (cola en memoria, servicios simulados)
-npm run dev -w apps/web        # panel en :5173 (proxy a :3000)
+npm run demo                   # API con una organización de ejemplo ya cargada (:3000)
+npm run dev -w apps/web        # consola en :5173 (proxy a :3000); entra con dev-approver para firmar
 ```
 Claves de desarrollo (solo si `NODE_ENV != production`): `dev-viewer`, `dev-analyst`, `dev-approver` (org `org_acme`) en la cabecera `x-api-key`.
 En producción define `SENTINEL_API_KEYS` y `APPROVAL_SIGNING_KEY` (obligatorio).
@@ -62,3 +63,10 @@ En producción define `SENTINEL_API_KEYS` y `APPROVAL_SIGNING_KEY` (obligatorio)
 Producción: `INFRA_MODE=aws`, OIDC (`OIDC_ISSUER`…), firma KMS/Ed25519 y Postgres; ver [`docs/architecture.md`](docs/architecture.md).
 
 Qué está simulado y qué falta para producción: ver la última sección de [`docs/architecture.md`](docs/architecture.md).
+
+## La consola
+- **Resumen**: una frase que dice dónde estás (hallazgos, credenciales expuestas, firmas pendientes) y un mapa que sitúa cada activo según esté expuesto a Internet y protegido por gateway; es lo que explica su puntuación.
+- **Hallazgos**: ordenados por exposición real; cada uno muestra el desglose «severidad del escáner → ajustes por contexto → puntuación» y la cadena informe (hash) → hallazgo → plan.
+- **Decisiones**: cada cambio se presenta como una orden de trabajo (qué ocurrirá, si es reversible, diferencias exactas, Terraform, estado de la ejecución, hash del plan). La firma exige **mantener pulsado** (ratón, táctil o teclado) y la barra de decisión queda fija abajo; rechazar exige motivo. Quien solicitó un cambio no puede firmarlo y el rol `viewer` ni siquiera ve el botón activo.
+- **Incidentes**: resumen cuyas líneas citan la evidencia congelada (clic para resaltarla) con comprobación de integridad.
+- Tests: `npm test -w apps/web` (vitest) y `npm run e2e -w apps/web` (Playwright contra la API demo: firma real con pulsación sostenida, rechazo con motivo, móvil sin desbordes). Las capturas quedan en `apps/web/shots`.

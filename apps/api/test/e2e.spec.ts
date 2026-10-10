@@ -302,3 +302,36 @@ describe('audit & workflow versions', () => {
     expect(t.db.workflows.get(ORG, v1.id)!.version).toBe(1);
   });
 });
+
+describe('read APIs for the console & hardening', () => {
+  it('lists/filters findings, credentials, executions, incidents and enriches the approval inbox', async () => {
+    await t.analyst.post('/api/v1/scans/ingest', { format: 'sarif', source: 'ci', report: sarif([res('js/sql-injection', 'api/x.js'), res('js/xss', 'web/y.js', 'XSS', 'warning')]) });
+    const { cred } = await seedCredential();
+    const rot = await t.analyst.post('/api/v1/secrets/rotate', { credentialId: cred.id }).expect(202);
+    await t.analyst.post('/api/v1/incidents/trigger', { kind: 'brute_force', source: '1.2.3.4', target: 'auth-api', count: 900, windowSec: 60 });
+    await settle();
+    expect((await t.viewer.get('/api/v1/me')).body).toMatchObject({ role: 'viewer', orgId: ORG });
+    const f = (await t.viewer.get('/api/v1/findings?severity=critical,high&q=sql')).body;
+    expect(f.total).toBeGreaterThan(0); expect(f.items.every((x: any) => /sql/i.test(x.title + x.ruleId))).toBe(true);
+    expect((await t.viewer.get('/api/v1/findings?kind=secret')).body.items[0].maskedSecret).toBe('AKIA****LE');
+    expect((await t.viewer.get('/api/v1/findings?limit=1&offset=1')).body.items).toHaveLength(1);
+    expect((await t.viewer.get('/api/v1/credentials')).body[0].maskedValue).toBe('AKIA****LE');
+    expect((await t.viewer.get('/api/v1/executions')).body.length).toBe(2);
+    expect((await t.viewer.get('/api/v1/incidents')).body[0]).toMatchObject({ target: 'auth-api', anomaly: { source: '1.2.3.4' } });
+    const inbox = (await t.viewer.get('/api/v1/approvals?status=pending')).body;
+    expect(inbox).toHaveLength(2);
+    expect(inbox.find((a: any) => a.execution.id === rot.body.executionId).execution.steps.map((s: any) => s.status)).toEqual(['succeeded', 'succeeded', 'succeeded', 'awaiting_approval']);
+    await t.other.get('/api/v1/credentials').expect(200).then((r) => expect(r.body).toEqual([]));
+  });
+  it('sends hardening headers, exposes /healthz, and rate-limits per credential', async () => {
+    const r = await t.http.get('/healthz').expect(200);
+    expect(r.headers['x-content-type-options']).toBe('nosniff'); expect(r.headers['cache-control']).toBe('no-store'); expect(r.headers['x-powered-by']).toBeUndefined();
+    process.env.RATE_LIMIT_PER_MIN = '3';
+    const t2 = await boot();
+    for (let i = 0; i < 3; i++) await t2.viewer.get('/api/v1/me').expect(200);
+    const blocked = await t2.viewer.get('/api/v1/me').expect(429);
+    expect(blocked.headers['retry-after']).toBeDefined();
+    await t2.analyst.get('/api/v1/me').expect(200); // other credential unaffected
+    delete process.env.RATE_LIMIT_PER_MIN; await t2.app.close();
+  });
+});

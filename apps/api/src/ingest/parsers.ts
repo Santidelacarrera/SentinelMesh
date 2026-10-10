@@ -85,8 +85,8 @@ export function parseSecrets(doc: unknown): RawFinding[] {
   return SecretHook.parse(doc).findings.map((f): RawFinding => {
     const placeholder = /(^|[^a-z0-9])(example|dummy|changeme|placeholder|your[_-]?(api[_-]?)?(key|token|secret)|x{4,})/i.test(f.secret) || (f.entropy !== undefined && f.entropy < 2.5);
     return {
-      kind: 'secret', ruleId: f.rule, title: `Exposed credential (${f.rule})`,
-      description: `Secret ${maskSecret(f.secret)} detected in ${f.file ?? 'repository'}${f.verified ? ' (verified live)' : ''}`,
+      kind: 'secret', ruleId: f.rule, title: `Credencial expuesta (${f.rule})`,
+      description: `Secreto ${maskSecret(f.secret)} detectado en ${f.file ?? 'el repositorio'}${f.verified ? ' (verificado como activo)' : ''}`,
       severity: f.verified ? 'critical' : 'high', assetName: f.repo, location: f.file ? `${f.file}${f.line ? ':' + f.line : ''}` : undefined,
       maskedSecret: maskSecret(f.secret), secretFingerprint: sha256(f.secret).slice(0, 16),
       likelyFalsePositive: !f.verified && (placeholder || isTestPath(f.file)),

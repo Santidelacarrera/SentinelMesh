@@ -68,6 +68,9 @@ Configuración: `INFRA_MODE=aws` activa los adaptadores reales (con `NODE_ENV=pr
 Variables: `DATABASE_URL`, `REDIS_URL`, `OBJECT_STORE_BUCKET`/`AWS_ENDPOINT_URL`, `OIDC_ISSUER`/`OIDC_AUDIENCE`/`OIDC_JWKS_URI`/`AUTH_ALLOW_API_KEYS=0`,
 `APPROVAL_KMS_KEY_ID` | `APPROVAL_ED25519_PRIVATE_KEY` | `APPROVAL_SIGNING_KEY`, `HEALTHCHECK_URLS`, `ISOLATION_TARGETS`, `PROMETHEUS_URL`, `LOKI_URL`, `KUBE_API_URL`.
 
+## Endurecimiento HTTP y lectura para la consola
+Cabeceras de seguridad en toda la API (`nosniff`, `X-Frame-Options: DENY`, `Cache-Control: no-store`, CSP restrictiva), límite de tasa por credencial (`RATE_LIMIT_PER_MIN`, 600 por defecto, 429 + `Retry-After`), `GET /healthz`, y endpoints de lectura para la consola (`/me`, `/findings` filtrable y paginado, `/assets`, `/credentials`, `/executions`, `/incidents`, `/iam/audits`, bandeja enriquecida con ejecución y hallazgo de origen). Las credenciales solo se devuelven enmascaradas.
+
 ## Límites conocidos (honestidad)
 - **Un solo proceso escritor**: las colecciones en memoria son la ruta de lectura y Postgres es escritura inmediata + hidratación al arrancar. Varias réplicas de la API no verían las escrituras de las otras; para escalar horizontalmente hay que pasar los repositorios a async leyendo de Postgres (el esquema y el RLS ya están listos). El lock evita doble ejecución, pero no resuelve esa visibilidad.
 - Si una escritura a Postgres falla se registra y `flush()` lanza; no hay cola de reintento persistente para escrituras.

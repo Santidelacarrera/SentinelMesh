@@ -2,10 +2,14 @@
   "name": "sentinelmesh",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["apps/*"],
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
-    "test": "npm test -w apps/api",
+    "test": "npm test -w apps/api && npm test -w apps/web",
+    "test:e2e": "npm run e2e -w apps/web",
     "build": "npm run build -w apps/api && npm run build -w apps/web",
-    "simulate": "npm run simulate -w apps/api"
+    "simulate": "npm run simulate -w apps/api",
+    "demo": "npm run demo -w apps/api"
   }
 }

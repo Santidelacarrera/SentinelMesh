@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { Controller, Get, MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { RateLimit, SecurityHeaders } from './http-hardening';
 import { ApiController } from './api.controllers';
 import { Db } from './store/db';
 import { PgPersistence } from './store/pg';
@@ -19,8 +20,13 @@ import { EXECUTION_LOCK, MemoryLock, RedisLock } from './workflow/lock';
 import Redis from 'ioredis';
 import { JOB_QUEUE, BullQueue, MemoryQueue } from './queue/queue';
 
+@Controller()
+class HealthController {
+  @Get('healthz') live() { return { ok: true }; }
+}
+
 @Module({
-  controllers: [ApiController],
+  controllers: [ApiController, HealthController],
   providers: [
     Db, PgPersistence, AuditTrail, AuthService, RolesGuard, ApprovalSigner, ApprovalsService, DryRunService, RemediationService, IncidentsService,
     IngestService, WorkflowService, WorkflowEngine, CoreHandlers,
@@ -30,4 +36,6 @@ import { JOB_QUEUE, BullQueue, MemoryQueue } from './queue/queue';
     ...portProviders,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(c: MiddlewareConsumer) { c.apply(SecurityHeaders, RateLimit).forRoutes('*'); }
+}
