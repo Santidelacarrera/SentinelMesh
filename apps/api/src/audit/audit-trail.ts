@@ -10,6 +10,8 @@ const GENESIS = '0'.repeat(64);
 @Injectable()
 export class AuditTrail {
   private chains = new Map<string, AuditEntry[]>();
+  onAppend?: (e: AuditEntry) => void;
+  hydrate(entries: AuditEntry[]) { for (const e of entries.sort((a, b) => a.seq - b.seq)) { const c = this.chains.get(e.orgId) ?? []; c.push(Object.freeze(e) as AuditEntry); this.chains.set(e.orgId, c); } }
 
   append(orgId: string, actor: string, event: string, data: unknown = {}): AuditEntry {
     const chain = this.chains.get(orgId) ?? [];
@@ -18,6 +20,7 @@ export class AuditTrail {
     const entry: AuditEntry = { ...base, hash: AuditTrail.hash(base) };
     chain.push(Object.freeze(entry) as AuditEntry);
     this.chains.set(orgId, chain);
+    this.onAppend?.(entry);
     return entry;
   }
 

@@ -4,7 +4,11 @@
  */
 export class Collection<T extends { id: string; orgId: string }> {
   private rows = new Map<string, T>();
-  put(row: T): T { this.rows.set(row.id, structuredClone(row)); return row; }
+  /** Persistence hook (write-through). Called after every mutation with the stored row. */
+  onWrite?: (row: T) => void;
+  put(row: T): T { this.rows.set(row.id, structuredClone(row)); this.onWrite?.(structuredClone(row)); return row; }
+  /** Loads rows without triggering persistence (boot-time hydration). */
+  hydrate(rows: T[]) { for (const r of rows) this.rows.set(r.id, r); }
   get(orgId: string, id: string): T | undefined {
     const r = this.rows.get(id);
     return r && r.orgId === orgId ? structuredClone(r) : undefined;
@@ -16,6 +20,7 @@ export class Collection<T extends { id: string; orgId: string }> {
     const cur = this.rows.get(id);
     if (!cur || cur.orgId !== orgId) throw new Error(`not found: ${id}`);
     if (typeof patch === 'function') patch(cur); else Object.assign(cur, patch);
+    this.onWrite?.(structuredClone(cur));
     return structuredClone(cur);
   }
 }

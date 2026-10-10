@@ -151,6 +151,19 @@ describe('engine resilience', () => {
     expect(t.db.approvals.list(ORG)).toHaveLength(1);
   });
 
+  it('two workers racing on one execution never double-apply (execution lock)', async () => {
+    const { cred } = await seedCredential();
+    const rot = await t.analyst.post('/api/v1/secrets/rotate', { credentialId: cred.id }).expect(202);
+    await settle();
+    const [a] = t.db.approvals.list(ORG);
+    await t.approver.post(`/api/v1/approvals/${a.id}/decision`, { decision: 'approved' }).expect(200);
+    const results = await Promise.allSettled([t.engine.advance(ORG, rot.body.executionId), t.engine.advance(ORG, rot.body.executionId), t.engine.advance(ORG, rot.body.executionId)]);
+    await settle();
+    expect(results.some((r) => r.status === 'rejected' && /another worker/.test(String((r as any).reason)))).toBe(true);
+    expect(t.secrets.calls.filter((c) => c.startsWith('revoke'))).toEqual(['revoke:1']);
+    expect(t.db.executions.get(ORG, rot.body.executionId)!.status).toBe('succeeded');
+  });
+
   it('gives up after bounded retries and marks the execution failed', async () => {
     const { cred } = await seedCredential();
     t.secrets.createVersion = async () => { throw new Error('vault down'); };

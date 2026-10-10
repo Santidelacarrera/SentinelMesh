@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ApiController } from './api.controllers';
 import { Db } from './store/db';
+import { PgPersistence } from './store/pg';
 import { AuditTrail } from './audit/audit-trail';
 import { AuthService, RolesGuard } from './auth/auth';
 import { ApprovalSigner } from './approvals/signer';
@@ -15,16 +16,19 @@ import { WorkflowEngine } from './workflow/engine';
 import { CoreHandlers } from './workflow/handlers';
 import { PORTS } from './workflow/ports';
 import { SimulatedForensics, SimulatedHealth, SimulatedInfra, SimulatedSecrets } from './workflow/simulated';
+import { EXECUTION_LOCK, MemoryLock, RedisLock } from './workflow/lock';
+import Redis from 'ioredis';
 import { JOB_QUEUE, BullQueue, MemoryQueue } from './queue/queue';
 import { FsObjectStorage, MemoryObjectStorage, OBJECT_STORAGE } from './storage/object-storage';
 
 @Module({
   controllers: [ApiController],
   providers: [
-    Db, AuditTrail, AuthService, RolesGuard, ApprovalSigner, ApprovalsService, DryRunService, RemediationService, IncidentsService,
+    Db, PgPersistence, AuditTrail, AuthService, RolesGuard, ApprovalSigner, ApprovalsService, DryRunService, RemediationService, IncidentsService,
     IngestService, WorkflowService, WorkflowEngine, CoreHandlers,
     { provide: AnalyticsClient, useFactory: () => new AnalyticsClient() },
     { provide: JOB_QUEUE, useFactory: () => (process.env.REDIS_URL ? new BullQueue(process.env.REDIS_URL) : new MemoryQueue(5, 500)) },
+    { provide: EXECUTION_LOCK, useFactory: () => (process.env.REDIS_URL ? new RedisLock(new Redis(process.env.REDIS_URL)) : new MemoryLock()) },
     { provide: OBJECT_STORAGE, useFactory: () => (process.env.OBJECT_STORE_DIR ? new FsObjectStorage(process.env.OBJECT_STORE_DIR) : new MemoryObjectStorage()) },
     // Simulated ports: real AWS/Vault/K8s adapters implement the same interfaces (see docs/architecture.md).
     { provide: PORTS.SECRETS, inject: [ApprovalSigner], useFactory: (s: ApprovalSigner) => { const x = new SimulatedSecrets((p) => s.assertProof(p)); return x; } },

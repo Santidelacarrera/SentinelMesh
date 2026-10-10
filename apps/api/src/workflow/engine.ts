@@ -9,6 +9,7 @@ import { AuditTrail } from '../audit/audit-trail';
 import { JOB_QUEUE, JobQueue } from '../queue/queue';
 import { ApprovalProof } from './ports';
 import { newId, now } from '../common/ids';
+import { EXECUTION_LOCK, ExecutionLock } from './lock';
 import { redact } from '../common/mask';
 
 /** A failure that retrying cannot fix (e.g. failed healthcheck → already rolled back). */
@@ -27,11 +28,10 @@ const MAX_ATTEMPTS = 5;
 export class WorkflowEngine implements OnModuleInit {
   private log = new Logger('Engine');
   private handlers = new Map<ActionType, ActionHandler>();
-  private running = new Set<string>();
 
   constructor(
     private db: Db, private workflows: WorkflowService, private approvals: ApprovalsService, private signer: ApprovalSigner,
-    private dryrun: DryRunService, private audit: AuditTrail, @Inject(JOB_QUEUE) private queue: JobQueue,
+    private dryrun: DryRunService, private audit: AuditTrail, @Inject(JOB_QUEUE) private queue: JobQueue, @Inject(EXECUTION_LOCK) private lock: ExecutionLock,
   ) {}
 
   onModuleInit() { this.queue.process((j) => this.advance(j.orgId, j.executionId)); }
@@ -53,9 +53,9 @@ export class WorkflowEngine implements OnModuleInit {
 
   /** Re-entrant & resumable: derives everything from persisted state, so a crashed worker can simply be re-run. */
   async advance(orgId: string, executionId: string): Promise<void> {
-    if (this.running.has(executionId)) return;
-    this.running.add(executionId);
-    try { await this.loop(orgId, executionId); } finally { this.running.delete(executionId); }
+    // Throws LockBusyError when another worker owns the execution → the queue retries with backoff (no lost wake-ups).
+    const release = await this.lock.acquire(`${orgId}:${executionId}`, 120_000);
+    try { await this.loop(orgId, executionId); } finally { await release(); }
   }
 
   private save(orgId: string, id: string, fn: (e: WorkflowExecution) => void) {

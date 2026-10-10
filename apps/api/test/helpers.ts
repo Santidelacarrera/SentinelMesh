@@ -11,6 +11,7 @@ import { AuditTrail } from '../src/audit/audit-trail';
 import { WorkflowEngine } from '../src/workflow/engine';
 import { OBJECT_STORAGE, MemoryObjectStorage } from '../src/storage/object-storage';
 import { AuthService } from '../src/auth/auth';
+import { EXECUTION_LOCK, MemoryLock } from '../src/workflow/lock';
 
 process.env.HEALTH_RETRY_MS = '0';
 delete process.env.ANALYTICS_URL;
@@ -18,6 +19,7 @@ delete process.env.ANALYTICS_URL;
 export async function boot() {
   const mod = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(JOB_QUEUE).useValue(new MemoryQueue(4, 0))
+    .overrideProvider(EXECUTION_LOCK).useValue(new MemoryLock())
     .overrideProvider(OBJECT_STORAGE).useValue(new MemoryObjectStorage())
     .compile();
   const app: INestApplication = mod.createNestApplication();
