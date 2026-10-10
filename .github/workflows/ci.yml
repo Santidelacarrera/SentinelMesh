@@ -17,8 +17,12 @@ jobs:
       - run: npm ci
       - name: Start AWS API emulator (moto) and prepare database
         run: |
-          pip install "moto[server,s3,secretsmanager,wafv2,iam,kms,ec2]"
-          (moto_server -p 5555 &) ; sleep 3
+          # isolated venv: the runner's system pyOpenSSL/boto3 clash with moto's dependencies
+          python3 -m venv /tmp/moto-venv
+          /tmp/moto-venv/bin/pip install -q "moto[server,s3,secretsmanager,wafv2,iam,kms,ec2]"
+          (/tmp/moto-venv/bin/moto_server -p 5555 > /tmp/moto.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf localhost:5555/moto-api/ >/dev/null && break; sleep 1; done
+          curl -sf localhost:5555/moto-api/ >/dev/null || { cat /tmp/moto.log; exit 1; }
           export PGPASSWORD=ci
           psql -h localhost -U postgres -d sm -v ON_ERROR_STOP=1 -f db/schema.sql
           psql -h localhost -U postgres -d sm -v ON_ERROR_STOP=1 -f db/roles.sql
