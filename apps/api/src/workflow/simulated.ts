@@ -5,7 +5,7 @@ export class SimulatedSecrets implements SecretProvider {
   active = new Map<string, number>();
   idem = new Map<string, number>();
   calls: string[] = [];
-  constructor(private proofCheck: (p: ApprovalProof) => void = () => {}) {}
+  constructor(private proofCheck: (p: ApprovalProof) => void | Promise<void> = () => {}) {}
   seed(id: string) { this.versions.set(id, new Map([[1, 'valid']])); this.active.set(id, 1); }
   async createVersion(id: string, key: string) {
     this.calls.push(`create:${key}`);
@@ -16,7 +16,7 @@ export class SimulatedSecrets implements SecretProvider {
   async setActive(id: string, v: number) { this.calls.push(`active:${v}`); this.active.set(id, v); }
   async getActive(id: string) { return this.active.get(id) ?? 1; }
   async discardVersion(id: string, v: number) { this.calls.push(`discard:${v}`); this.versions.get(id)?.delete(v); }
-  async revokeVersion(id: string, v: number, proof: ApprovalProof) { this.proofCheck(proof); this.calls.push(`revoke:${v}`); this.versions.get(id)?.set(v, 'revoked'); }
+  async revokeVersion(id: string, v: number, proof: ApprovalProof) { await this.proofCheck(proof); this.calls.push(`revoke:${v}`); this.versions.get(id)?.set(v, 'revoked'); }
   async isValid(id: string, v: number) { return this.versions.get(id)?.get(v) === 'valid'; }
 }
 
@@ -32,10 +32,10 @@ export class SimulatedHealth implements HealthChecker {
 
 export class SimulatedInfra implements InfraAdapter {
   applied: Array<{ op: string; arg: unknown }> = [];
-  constructor(private proofCheck: (p: ApprovalProof) => void = () => {}) {}
-  async applyWafRule(params: Record<string, unknown>, proof: ApprovalProof) { this.proofCheck(proof); this.applied.push({ op: 'waf', arg: params }); return { ref: 'waf-sim-1' }; }
-  async applyIamPolicy(params: Record<string, unknown>, proof: ApprovalProof) { this.proofCheck(proof); this.applied.push({ op: 'iam', arg: params }); return { ref: 'iam-sim-1' }; }
-  async isolateService(target: string, proof: ApprovalProof) { this.proofCheck(proof); this.applied.push({ op: 'isolate', arg: target }); return { ref: `sg-isolate-${target}` }; }
+  constructor(private proofCheck: (p: ApprovalProof) => void | Promise<void> = () => {}) {}
+  async applyWafRule(params: Record<string, unknown>, proof: ApprovalProof) { await this.proofCheck(proof); this.applied.push({ op: 'waf', arg: params }); return { ref: 'waf-sim-1' }; }
+  async applyIamPolicy(params: Record<string, unknown>, proof: ApprovalProof) { await this.proofCheck(proof); this.applied.push({ op: 'iam', arg: params }); return { ref: 'iam-sim-1' }; }
+  async isolateService(target: string, proof: ApprovalProof) { await this.proofCheck(proof); this.applied.push({ op: 'isolate', arg: target }); return { ref: `sg-isolate-${target}` }; }
 }
 
 export class SimulatedForensics implements ForensicCollector {

@@ -32,6 +32,8 @@ export function isPrivateIp(ip: string): boolean {
 export interface UrlPolicy {
   allowedHosts?: string[]; // exact-match allowlist (preferred)
   allowHttp?: boolean;
+  /** Operator-configured internal hosts (exact match) that may resolve to private ranges, e.g. an in-cluster healthcheck. Never fed from request data. */
+  allowPrivateHosts?: string[];
   resolve?: (host: string) => Promise<string[]>;
 }
 
@@ -43,6 +45,7 @@ export async function assertSafeUrl(raw: string, policy: UrlPolicy = {}): Promis
   if (u.username || u.password) throw new UnsafeUrlError('credentials in URL not allowed');
   const host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
   if (policy.allowedHosts && !policy.allowedHosts.includes(host)) throw new UnsafeUrlError('host not in allowlist');
+  if (policy.allowPrivateHosts?.includes(host)) return u;
   const ips = isIP(host)
     ? [host]
     : await (policy.resolve ?? (async (h) => (await lookup(h, { all: true })).map((r) => r.address)))(host);

@@ -73,7 +73,7 @@ export class WorkflowEngine implements OnModuleInit {
 
       let plan: DryRunPlan | undefined, proof: ApprovalProof | undefined;
       if (step.destructive) {
-        const gate = this.gate(ex, step);
+        const gate = await this.gate(ex, step);
         if (gate.kind === 'pause') return;
         if (gate.kind === 'rejected') return;
         if (gate.kind === 'terminal') { this.failTerminal(orgId, id, i, gate.reason); return; }
@@ -112,8 +112,8 @@ export class WorkflowEngine implements OnModuleInit {
     this.audit.append(orgId, 'system', 'execution.failed', { executionId: id, step: idx, reason });
   }
 
-  private gate(ex: WorkflowExecution, step: ExecutionStep):
-    | { kind: 'ok'; plan: DryRunPlan; proof: ApprovalProof } | { kind: 'pause' } | { kind: 'rejected' } | { kind: 'terminal'; reason: string } {
+  private async gate(ex: WorkflowExecution, step: ExecutionStep): Promise<
+    | { kind: 'ok'; plan: DryRunPlan; proof: ApprovalProof } | { kind: 'pause' } | { kind: 'rejected' } | { kind: 'terminal'; reason: string }> {
     const planId = (ex.context['plans'] as Record<string, string> | undefined)?.[step.name];
     const plan = planId ? this.db.plans.get(ex.orgId, planId) : undefined;
     if (!plan) return { kind: 'terminal', reason: `destructive step "${step.name}" has no dry-run plan` };
@@ -136,7 +136,7 @@ export class WorkflowEngine implements OnModuleInit {
       this.audit.append(ex.orgId, 'system', 'execution.rejected', { executionId: ex.id, step: step.name });
       return { kind: 'rejected' };
     }
-    if (!this.signer.verifyApproval(a) || a.planHash !== plan.planHash) return { kind: 'terminal', reason: 'approval signature invalid or bound to a different plan' };
+    if (!(await this.signer.verifyApproval(a)) || a.planHash !== plan.planHash) return { kind: 'terminal', reason: 'approval signature invalid or bound to a different plan' };
     return { kind: 'ok', plan, proof: this.signer.toProof(a) };
   }
 }

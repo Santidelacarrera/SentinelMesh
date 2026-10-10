@@ -3,14 +3,31 @@ on: [push, pull_request]
 jobs:
   node:
     runs-on: ubuntu-latest
-    services: { redis: { image: "redis:7-alpine", ports: ["6379:6379"] } }
+    services:
+      redis: { image: "redis:7-alpine", ports: ["6379:6379"] }
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_PASSWORD: ci, POSTGRES_DB: sm }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
+      - name: Start AWS API emulator (moto) and prepare database
+        run: |
+          pip install "moto[server,s3,secretsmanager,wafv2,iam,kms,ec2]"
+          (moto_server -p 5555 &) ; sleep 3
+          export PGPASSWORD=ci
+          psql -h localhost -U postgres -d sm -v ON_ERROR_STOP=1 -f db/schema.sql
+          psql -h localhost -U postgres -d sm -v ON_ERROR_STOP=1 -f db/roles.sql
       - run: npm test
-        env: { REDIS_URL: "redis://localhost:6379" }
+        env:
+          REDIS_URL: "redis://localhost:6379"
+          AWS_TEST_ENDPOINT: "http://localhost:5555"
+          TEST_DATABASE_URL: "postgres://sentinel_app:dev-only-app@localhost:5432/sm"
+          TEST_DATABASE_ADMIN_URL: "postgres://postgres:ci@localhost:5432/sm"
       - run: npm run build
       - run: npm run simulate
   python:

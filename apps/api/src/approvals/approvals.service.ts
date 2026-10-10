@@ -33,7 +33,7 @@ export class ApprovalsService {
     const ex = this.db.executions.get(me.orgId, a.executionId);
     if (ex && ex.context['requestedBy'] === me.userId) throw new ForbiddenException('separation of duties: the requester cannot approve their own change');
     const decidedAt = now();
-    const signature = this.signer.sign(a, decision, me.userId, decidedAt);
+    const signature = await this.signer.sign(a, decision, me.userId, decidedAt);
     const out = this.db.approvals.update(me.orgId, id, { status: decision, decidedBy: me.userId, decidedAt, comment, signature });
     this.audit.append(me.orgId, me.userId, `approval.${decision}`, { approvalId: id, executionId: a.executionId, planId: a.planId, planHash: a.planHash, comment });
     await this.queue.enqueue({ orgId: me.orgId, executionId: a.executionId });

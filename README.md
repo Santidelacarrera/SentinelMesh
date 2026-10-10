@@ -16,7 +16,7 @@ simula el cambio (diff / Terraform) → ejecuta de forma idempotente **solo tras
 ## Probarlo en 1 minuto
 ```bash
 npm install
-npm test                      # 41 tests (unitarios + e2e HTTP); BullMQ se prueba con REDIS_URL=redis://localhost:6379
+npm test                      # unitarios + e2e HTTP. Con servicios externos activa más suites (ver abajo)
 npm run simulate              # incidente controlado completo, el aprobador APRUEBA
 npm run simulate -- --reject  # el aprobador RECHAZA: no cambia nada
 cd services/analytics && pip install -r requirements.txt && pytest -q
@@ -51,5 +51,14 @@ En producción define `SENTINEL_API_KEYS` y `APPROVAL_SIGNING_KEY` (obligatorio)
 - **Rotación sin cortes**: healthcheck antes de revocar; rollback si falla. ✔ tests de `zero-downtime rotation`
 - **Nada en producción sin la bandeja**: adaptadores rechazan acciones sin prueba de aprobación firmada. ✔ tests de `dry-run simulation & approval gate`
 - **Arquitectura + simulación**: [`docs/architecture.md`](docs/architecture.md) y `npm run simulate`.
+
+### Suites que usan servicios reales (se saltan solas si faltan)
+| Variable | Qué activa |
+|---|---|
+| `REDIS_URL` | cola BullMQ y lock distribuido contra Redis |
+| `AWS_TEST_ENDPOINT` (p. ej. `moto_server -p 5555`) | adaptadores S3/Secrets Manager/WAFv2/IAM/EC2/KMS y flujos completos |
+| `TEST_DATABASE_URL` (+ `TEST_DATABASE_ADMIN_URL`) | persistencia Postgres y RLS (`db/schema.sql` + `db/roles.sql` aplicados) |
+
+Producción: `INFRA_MODE=aws`, OIDC (`OIDC_ISSUER`…), firma KMS/Ed25519 y Postgres; ver [`docs/architecture.md`](docs/architecture.md).
 
 Qué está simulado y qué falta para producción: ver la última sección de [`docs/architecture.md`](docs/architecture.md).

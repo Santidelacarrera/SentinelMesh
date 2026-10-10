@@ -2,6 +2,8 @@
 export interface ApprovalProof { approvalId: string; planId: string; planHash: string; decidedBy: string; decidedAt: string; signature: string }
 
 export interface SecretProvider {
+  /** Optional: register a pre-existing credential under management (idempotent). */
+  adopt?(credentialId: string): Promise<void>;
   /** Idempotent per key: replaying the same key returns the same version (crash-safe). */
   createVersion(credentialId: string, idempotencyKey: string): Promise<{ version: number }>;
   /** Points consumers (secret manager entry) to a version. */

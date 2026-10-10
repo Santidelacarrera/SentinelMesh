@@ -63,3 +63,12 @@ describe('local analytics fallback', () => {
     expect(r.proposedPolicy.statements[0].actions).toEqual(['s3:GetObject']);
   });
 });
+
+describe('production guard', () => {
+  it('refuses simulated ports in production', async () => {
+    const { Test } = await import('@nestjs/testing'); const { AppModule } = await import('../src/app.module');
+    const prev = { ...process.env }; process.env.NODE_ENV = 'production'; process.env.APPROVAL_SIGNING_KEY = 'k'; delete process.env.INFRA_MODE;
+    try { await expect(Test.createTestingModule({ imports: [AppModule] }).compile()).rejects.toThrow(/INFRA_MODE=aws/); }
+    finally { process.env = prev; }
+  });
+});

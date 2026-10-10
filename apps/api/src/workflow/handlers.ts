@@ -18,6 +18,7 @@ export class CoreHandlers implements OnModuleInit {
     const e = this.engine;
     e.register('create_credential', async (c) => {
       const id = String(c.input['credentialId']);
+      await this.secrets.adopt?.(id);
       const previousVersion = await this.secrets.getActive(id);
       const { version } = await this.secrets.createVersion(id, c.idempotencyKey);
       return { previousVersion, newVersion: version };

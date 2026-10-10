@@ -57,7 +57,7 @@ export class RemediationService {
     let plan, executionId;
     if (input.submitForApproval && r.unused.length) {
       const current: PolicyDoc = { version: '2012-10-17', statements: [{ effect: 'Allow', actions: r.granted, resources: input.resources }] };
-      const s = await this.simulate(me, { kind: 'iam', targetRef: input.roleName, params: { current, proposed: r.proposedPolicy, critical: input.critical }, submitForApproval: true });
+      const s = await this.simulate(me, { kind: 'iam', targetRef: input.roleName, params: { roleName: input.roleName, current, proposed: r.proposedPolicy, critical: input.critical }, submitForApproval: true });
       plan = s.plan; executionId = s.executionId;
     }
     return { audit, plan, executionId };

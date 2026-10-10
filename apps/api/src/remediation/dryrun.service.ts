@@ -39,11 +39,11 @@ export class DryRunService {
   intact(plan: DryRunPlan) { return DryRunService.planHash(plan) === plan.planHash; }
 
   private waf(target: string, p: Record<string, unknown>) {
-    const rule = (p['rule'] ?? {}) as { name?: string; action?: string; match?: string; priority?: number };
+    const rule = (p['rule'] ?? {}) as { name?: string; action?: string; match?: string; priority?: number; addresses?: string[] };
     const name = rule.name ?? 'block-suspicious'; const action = (rule.action ?? 'block').toLowerCase();
     return {
-      diff: [`--- waf/${target} (current)`, `+++ waf/${target} (proposed)`, `+ rule "${name}" priority=${rule.priority ?? 100}`, `+   match:  ${rule.match ?? 'ip_set:offenders'}`, `+   action: ${action.toUpperCase()}`].join('\n'),
-      terraform: `resource "aws_wafv2_rule_group" "${name.replace(/\W/g, '_')}" {\n  name     = "${name}"\n  scope    = "REGIONAL"\n  capacity = 10\n  rule {\n    name     = "${name}"\n    priority = ${rule.priority ?? 100}\n    action { ${action} {} }\n    statement { ip_set_reference_statement { arn = aws_wafv2_ip_set.offenders.arn } }\n    visibility_config {\n      cloudwatch_metrics_enabled = true\n      metric_name                = "${name}"\n      sampled_requests_enabled   = true\n    }\n  }\n  visibility_config {\n    cloudwatch_metrics_enabled = true\n    metric_name                = "${name}-group"\n    sampled_requests_enabled   = true\n  }\n}`,
+      diff: [`--- waf/${target} (current)`, `+++ waf/${target} (proposed)`, `+ rule "${name}" priority=${rule.priority ?? 100}`, `+   match:  ip_set ${name}-ips [${(rule.addresses ?? []).join(', ') || 'none'}]`, `+   action: ${action.toUpperCase()}`].join('\n'),
+      terraform: `resource "aws_wafv2_ip_set" "${name.replace(/\W/g, '_')}_ips" {\n  name               = "${name}-ips"\n  scope              = "REGIONAL"\n  ip_address_version = "IPV4"\n  addresses          = ${JSON.stringify(rule.addresses ?? [])}\n}\n\nresource "aws_wafv2_rule_group" "${name.replace(/\W/g, '_')}" {\n  name     = "${name}"\n  scope    = "REGIONAL"\n  capacity = 10\n  rule {\n    name     = "${name}"\n    priority = ${rule.priority ?? 100}\n    action { ${action} {} }\n    statement { ip_set_reference_statement { arn = aws_wafv2_ip_set.${name.replace(/\W/g, '_')}_ips.arn } }\n    visibility_config {\n      cloudwatch_metrics_enabled = true\n      metric_name                = "${name}"\n      sampled_requests_enabled   = true\n    }\n  }\n  visibility_config {\n    cloudwatch_metrics_enabled = true\n    metric_name                = "${name}-group"\n    sampled_requests_enabled   = true\n  }\n}`,
     };
   }
 

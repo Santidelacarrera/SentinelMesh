@@ -14,12 +14,10 @@ import { AnalyticsClient } from './analytics/analytics.client';
 import { WorkflowService } from './workflow/workflow.service';
 import { WorkflowEngine } from './workflow/engine';
 import { CoreHandlers } from './workflow/handlers';
-import { PORTS } from './workflow/ports';
-import { SimulatedForensics, SimulatedHealth, SimulatedInfra, SimulatedSecrets } from './workflow/simulated';
+import { portProviders } from './ports.config';
 import { EXECUTION_LOCK, MemoryLock, RedisLock } from './workflow/lock';
 import Redis from 'ioredis';
 import { JOB_QUEUE, BullQueue, MemoryQueue } from './queue/queue';
-import { FsObjectStorage, MemoryObjectStorage, OBJECT_STORAGE } from './storage/object-storage';
 
 @Module({
   controllers: [ApiController],
@@ -29,12 +27,7 @@ import { FsObjectStorage, MemoryObjectStorage, OBJECT_STORAGE } from './storage/
     { provide: AnalyticsClient, useFactory: () => new AnalyticsClient() },
     { provide: JOB_QUEUE, useFactory: () => (process.env.REDIS_URL ? new BullQueue(process.env.REDIS_URL) : new MemoryQueue(5, 500)) },
     { provide: EXECUTION_LOCK, useFactory: () => (process.env.REDIS_URL ? new RedisLock(new Redis(process.env.REDIS_URL)) : new MemoryLock()) },
-    { provide: OBJECT_STORAGE, useFactory: () => (process.env.OBJECT_STORE_DIR ? new FsObjectStorage(process.env.OBJECT_STORE_DIR) : new MemoryObjectStorage()) },
-    // Simulated ports: real AWS/Vault/K8s adapters implement the same interfaces (see docs/architecture.md).
-    { provide: PORTS.SECRETS, inject: [ApprovalSigner], useFactory: (s: ApprovalSigner) => { const x = new SimulatedSecrets((p) => s.assertProof(p)); return x; } },
-    { provide: PORTS.HEALTH, useFactory: () => new SimulatedHealth() },
-    { provide: PORTS.INFRA, inject: [ApprovalSigner], useFactory: (s: ApprovalSigner) => new SimulatedInfra((p) => s.assertProof(p)) },
-    { provide: PORTS.FORENSICS, useFactory: () => new SimulatedForensics() },
+    ...portProviders,
   ],
 })
 export class AppModule {}

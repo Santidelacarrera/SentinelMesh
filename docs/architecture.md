@@ -50,8 +50,29 @@
 workflow `incident-response`: `collect_forensics` (inmediato, congelado) → `summarize` (cada línea cita su evidencia) →
 `isolate_service` (**pausa**) → `notify`.
 
-## Estado de la implementación (honestidad)
-- **Probado**: lógica de dominio, API HTTP, motor, cola BullMQ contra Redis real, servicio Python, contrato TS↔Python.
-- **Simulado**: `SecretProvider`, `HealthChecker`, `InfraAdapter`, `ForensicCollector` (`workflow/simulated.ts`). Los adaptadores reales (AWS Secrets Manager/Vault, WAFv2, K8s) implementan las mismas interfaces en `workflow/ports.ts`.
-- **No ejecutado aquí**: `db/schema.sql` (se validó que parsea; el runtime usa el almacén en memoria con la misma API por organización), imágenes Docker/compose, adaptador S3/MinIO (hay backend en memoria y de disco con el mismo contrato `ObjectStorage`).
-- **Pendiente para producción**: persistencia Postgres, autenticación real (OIDC) en lugar de API keys, firma asimétrica/KMS de aprobaciones, bloqueo distribuido por ejecución al escalar a varios workers, `terraform plan` real en el dry-run.
+## Adaptadores reales y cómo se verificaron
+
+| Pieza | Implementación | Verificación |
+|---|---|---|
+| Secretos | `AwsSecretProvider` (Secrets Manager: versiones = etiquetas `sm-vN`, `AWSCURRENT` = activa, idempotencia por `ClientRequestToken`) | Contra **moto** (emulador de la API de AWS): crear idempotente, activar, rollback, revocar solo con prueba firmada, nunca la activa |
+| WAF / IAM / aislamiento | `AwsInfraAdapter` (WAFv2 IP set + rule group, `PutRolePolicy`, EC2 → SG de cuarentena con tag de rollback) | moto; cada método verifica la prueba de aprobación **antes** de tocar nada, y es idempotente |
+| Healthcheck | `HttpHealthChecker`: sondea el servicio con el secreto **candidato**, sin seguir redirects, SSRF-validado, sin filtrar el secreto | Servidor HTTP local que solo acepta ciertas credenciales; flujo completo rotación/rollback sobre Secrets Manager |
+| Forense | `HttpForensicCollector` (Prometheus, Loki, API de Kubernetes); fuentes opcionales, huecos registrados, nombre del objetivo validado | **Solo contra dobles con la forma de las respuestas** — no contra Prometheus/Loki/K8s reales |
+| Evidencia | `S3ObjectStorage` (S3/MinIO, `forcePathStyle` si hay endpoint) | moto (API S3) |
+| Persistencia | `PgPersistence`: escritura inmediata (write-through) en Postgres dentro de transacciones con `app.org_id`; hidratación al arrancar | Postgres 16 real: reinicio con ejecución pendiente que se reanuda y completa, RLS (otra org / sin org → 0 filas, insert cruzado rechazado), auditoría y versiones de workflow append-only |
+| Autenticación | OIDC/JWT (`jose`, JWKS): issuer, audience, expiración, algoritmos permitidos, claims de org y rol | Tokens firmados con claves de prueba: alg=none, HS256, otra clave, issuer/aud incorrectos, rol desconocido, sin tenant |
+| Firma de aprobaciones | `SignatureBackend`: HMAC (dev), **Ed25519** (verificación solo con clave pública) o **AWS KMS** ECDSA (la clave no sale del HSM) | KMS contra moto; las firmas de rechazo no sirven como aprobación |
+| Varios workers | `ExecutionLock` (Redis `SET NX PX` + token, liberación atómica); si está ocupado lanza error y la cola reintenta | Redis real: exclusión, expiración, un holder obsoleto no libera el lock de otro; test de carrera de 3 `advance` |
+
+Configuración: `INFRA_MODE=aws` activa los adaptadores reales (con `NODE_ENV=production` es **obligatorio**; sin él la app no arranca).
+Variables: `DATABASE_URL`, `REDIS_URL`, `OBJECT_STORE_BUCKET`/`AWS_ENDPOINT_URL`, `OIDC_ISSUER`/`OIDC_AUDIENCE`/`OIDC_JWKS_URI`/`AUTH_ALLOW_API_KEYS=0`,
+`APPROVAL_KMS_KEY_ID` | `APPROVAL_ED25519_PRIVATE_KEY` | `APPROVAL_SIGNING_KEY`, `HEALTHCHECK_URLS`, `ISOLATION_TARGETS`, `PROMETHEUS_URL`, `LOKI_URL`, `KUBE_API_URL`.
+
+## Límites conocidos (honestidad)
+- **Un solo proceso escritor**: las colecciones en memoria son la ruta de lectura y Postgres es escritura inmediata + hidratación al arrancar. Varias réplicas de la API no verían las escrituras de las otras; para escalar horizontalmente hay que pasar los repositorios a async leyendo de Postgres (el esquema y el RLS ya están listos). El lock evita doble ejecución, pero no resuelve esa visibilidad.
+- Si una escritura a Postgres falla se registra y `flush()` lanza; no hay cola de reintento persistente para escrituras.
+- Los emuladores (moto) reproducen la API de AWS, no todas sus reglas (IAM propagation, cuotas, ModifyInstanceAttribute en VPC reales…). Antes de producción conviene correr la suite de `aws.spec.ts` contra una cuenta sandbox.
+- `CredentialIssuer` por defecto genera valores aleatorios en Secrets Manager; para rotar credenciales reales (claves IAM, usuarios de BD, APIs de terceros) hay que implementar el emisor de cada sistema.
+- El Dockerfile de la API se validó paso a paso fuera de Docker (instalación limpia, build, instalación solo-producción y arranque en `NODE_ENV=production`); no hay daemon Docker en este entorno, así que `docker compose up` no se ejecutó (sí `docker compose config`).
+- Frontend: sin tests automatizados (compila y se probó la API que consume).
+- `terraform plan` real en el dry-run sigue pendiente: hoy se genera el HCL y el diff, no se ejecuta Terraform.
