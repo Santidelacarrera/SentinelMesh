@@ -59,7 +59,7 @@ describe('ingest & false-positive suppression', () => {
   it('traces a finding from report to simulated plan', async () => {
     await t.analyst.post('/api/v1/scans/ingest', { format: 'sarif', source: 'ci', report: sarif([res('js/sql-injection', 'api/x.js')]) });
     const f = (await t.db.findings.list(ORG))[0];
-    const sim = await t.analyst.post('/api/v1/remediations/simulate', { findingId: f.id, kind: 'waf', targetRef: 'api-gateway', params: { rule: { name: 'block-sqli', action: 'block', match: 'regex:union select' } } }).expect(201);
+    const sim = await t.analyst.post('/api/v1/remediations/simulate', { findingId: f.id, kind: 'waf', targetRef: 'api-gateway', params: { rule: { name: 'block-sqli', action: 'block', addresses: ['203.0.113.0/24'] } } }).expect(201);
     const tr = (await t.viewer.get(`/api/v1/findings/${f.id}/trace`).expect(200)).body;
     expect(tr.scan.reportRef).toMatch(/^reports\//);
     expect(tr.plans[0].id).toBe(sim.body.plan.id);
@@ -183,7 +183,7 @@ describe('dry-run simulation & approval gate', () => {
   const iam = { roleName: 'billing-role', critical: true, grantedActions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 'iam:*'], auditEvents: ['s3:GetObject', 's3:GetObject'], resources: ['arn:aws:s3:::billing/*'] };
 
   it('simulation has zero effect on infrastructure', async () => {
-    const r = await t.analyst.post('/api/v1/remediations/simulate', { kind: 'waf', targetRef: 'gw', params: { rule: { name: 'x' } } }).expect(201);
+    const r = await t.analyst.post('/api/v1/remediations/simulate', { kind: 'waf', targetRef: 'gw', params: { rule: { name: 'x', addresses: ['203.0.113.9/32'] } } }).expect(201);
     await t.analyst.post('/api/v1/iam/audit-roles', { ...iam, submitForApproval: false }).expect(201);
     await settle();
     expect(t.infra.applied).toEqual([]);
