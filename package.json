@@ -10,6 +10,11 @@
     "test:e2e": "npm run e2e -w apps/web",
     "build": "npm run build -w apps/api && npm run build -w apps/web",
     "simulate": "npm run simulate -w apps/api",
-    "demo": "npm run demo -w apps/api"
+    "demo": "npm run demo -w apps/api",
+    "mesh:gen": "node infra/mesh/generate.mjs",
+    "mesh:check": "node infra/mesh/generate.mjs --check && node --test infra/mesh/test/mesh.test.mjs"
+  },
+  "devDependencies": {
+    "yaml": "^2.9.1"
   }
 }

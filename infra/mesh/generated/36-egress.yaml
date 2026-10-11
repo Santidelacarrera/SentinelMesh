@@ -1,0 +1,36 @@
+# GENERADO por infra/mesh/generate.mjs desde services.yaml — no editar a mano.
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: secretsmanager-us-east-1-amazonaws-com
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  hosts:
+    - secretsmanager.us-east-1.amazonaws.com
+  location: MESH_EXTERNAL
+  resolution: DNS
+  ports:
+    - number: 443
+      name: tls
+      protocol: TLS
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: wafv2-us-east-1-amazonaws-com
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  hosts:
+    - wafv2.us-east-1.amazonaws.com
+  location: MESH_EXTERNAL
+  resolution: DNS
+  ports:
+    - number: 443
+      name: tls
+      protocol: TLS

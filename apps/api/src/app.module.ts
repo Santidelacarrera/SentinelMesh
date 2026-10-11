@@ -1,5 +1,6 @@
 import { Controller, Get, MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { RateLimit, SecurityHeaders } from './http-hardening';
+import { CorrelationMiddleware } from './common/correlation';
 import { ApiController } from './api.controllers';
 import { Db } from './store/db';
 import { PgBackend } from './store/pg';
@@ -40,5 +41,5 @@ class HealthController {
   ],
 })
 export class AppModule implements NestModule {
-  configure(c: MiddlewareConsumer) { c.apply(SecurityHeaders, RateLimit).forRoutes('*'); }
+  configure(c: MiddlewareConsumer) { c.apply(CorrelationMiddleware, SecurityHeaders, RateLimit).forRoutes('*'); }
 }

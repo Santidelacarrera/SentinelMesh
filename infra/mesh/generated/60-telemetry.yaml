@@ -1,0 +1,43 @@
+# GENERADO por infra/mesh/generate.mjs desde services.yaml — no editar a mano.
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  tracing:
+    - providers:
+        - name: otel
+      randomSamplingPercentage: 10
+      customTags:
+        tenant:
+          header:
+            name: x-tenant
+            defaultValue: none
+        request_id:
+          header:
+            name: x-request-id
+            defaultValue: none
+  accessLogging:
+    - providers:
+        - name: otel
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: sample-everything-on-incident
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  selector:
+    matchLabels:
+      app: sentinelmesh-api
+  tracing:
+    - providers:
+        - name: otel
+      randomSamplingPercentage: 100

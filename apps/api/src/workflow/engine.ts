@@ -9,6 +9,7 @@ import { AuditTrail } from '../audit/audit-trail';
 import { JOB_QUEUE, JobQueue } from '../queue/queue';
 import { ApprovalProof } from './ports';
 import { newId, now } from '../common/ids';
+import { correlationFor, currentCorrelation, runWithCorrelation } from '../common/correlation';
 import { EXECUTION_LOCK, ExecutionLock } from './lock';
 import { redact } from '../common/mask';
 
@@ -42,7 +43,7 @@ export class WorkflowEngine implements OnModuleInit {
     const wf = await this.workflows.resolve(orgId, key);
     const ex: WorkflowExecution = {
       id: newId('exe'), orgId, workflowId: wf.id, workflowKey: key, workflowVersion: wf.version, status: 'queued',
-      context: { ...context, requestedBy: actor }, incidentId, createdAt: now(), updatedAt: now(),
+      context: { ...context, requestedBy: actor, requestId: currentCorrelation()?.requestId }, incidentId, createdAt: now(), updatedAt: now(),
       steps: wf.steps.map((s) => ({ name: s.name, action: s.action, destructive: !!s.destructive || DESTRUCTIVE_ACTIONS.has(s.action), status: 'pending', attempts: 0 })),
     };
     await this.db.executions.put(ex);
@@ -55,7 +56,12 @@ export class WorkflowEngine implements OnModuleInit {
   async advance(orgId: string, executionId: string): Promise<void> {
     // Throws LockBusyError when another worker owns the execution → the queue retries with backoff (no lost wake-ups).
     const release = await this.lock.acquire(`${orgId}:${executionId}`, 120_000);
-    try { await this.loop(orgId, executionId); } finally { await release(); }
+    try {
+      // Worker side of the trace: continue under the request id (and tenant) that started the execution, so audit entries and
+      // calls to other services made by the worker still correlate with the originating request.
+      const ex = await this.db.executions.get(orgId, executionId);
+      await runWithCorrelation(correlationFor(ex?.context['requestId'] as string | undefined, orgId), () => this.loop(orgId, executionId));
+    } finally { await release(); }
   }
 
   private save(orgId: string, id: string, fn: (e: WorkflowExecution) => void) {

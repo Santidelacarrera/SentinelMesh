@@ -1,0 +1,102 @@
+# GENERADO por infra/mesh/generate.mjs desde services.yaml — no editar a mano.
+apiVersion: networking.istio.io/v1
+kind: Sidecar
+metadata:
+  name: shadowapi-guard
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  workloadSelector:
+    labels:
+      app: shadowapi-guard
+  outboundTrafficPolicy:
+    mode: REGISTRY_ONLY
+  egress:
+    - hosts:
+        - istio-system/*
+        - ./contextrag-engine.segundo-cerebro.svc.cluster.local
+        - ./sentinelmesh-api.segundo-cerebro.svc.cluster.local
+        - observability/otel-collector.observability.svc.cluster.local
+---
+apiVersion: networking.istio.io/v1
+kind: Sidecar
+metadata:
+  name: contextrag-engine
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  workloadSelector:
+    labels:
+      app: contextrag-engine
+  outboundTrafficPolicy:
+    mode: REGISTRY_ONLY
+  egress:
+    - hosts:
+        - istio-system/*
+        - observability/otel-collector.observability.svc.cluster.local
+---
+apiVersion: networking.istio.io/v1
+kind: Sidecar
+metadata:
+  name: sentinelmesh-api
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  workloadSelector:
+    labels:
+      app: sentinelmesh-api
+  outboundTrafficPolicy:
+    mode: REGISTRY_ONLY
+  egress:
+    - hosts:
+        - istio-system/*
+        - ./sentinelmesh-analytics.segundo-cerebro.svc.cluster.local
+        - observability/otel-collector.observability.svc.cluster.local
+        - ./secretsmanager.us-east-1.amazonaws.com
+        - ./wafv2.us-east-1.amazonaws.com
+        - data/postgres.data.svc.cluster.local
+        - data/redis.data.svc.cluster.local
+---
+apiVersion: networking.istio.io/v1
+kind: Sidecar
+metadata:
+  name: sentinelmesh-analytics
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  workloadSelector:
+    labels:
+      app: sentinelmesh-analytics
+  outboundTrafficPolicy:
+    mode: REGISTRY_ONLY
+  egress:
+    - hosts:
+        - istio-system/*
+        - observability/otel-collector.observability.svc.cluster.local
+---
+apiVersion: networking.istio.io/v1
+kind: Sidecar
+metadata:
+  name: sentinelmesh-web
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  workloadSelector:
+    labels:
+      app: sentinelmesh-web
+  outboundTrafficPolicy:
+    mode: REGISTRY_ONLY
+  egress:
+    - hosts:
+        - istio-system/*
+        - observability/otel-collector.observability.svc.cluster.local

@@ -7,7 +7,10 @@ from typing import Literal, Optional
 from fastapi import FastAPI
 from pydantic import BaseModel, ConfigDict, Field
 
+from .correlation import CorrelationMiddleware
+
 app = FastAPI(title="SentinelMesh Analytics", version="0.1.0")
+app.add_middleware(CorrelationMiddleware)
 Severity = Literal["critical", "high", "medium", "low", "info"]
 ORDER = ["info", "low", "medium", "high", "critical"]
 BASE = {"critical": 90, "high": 70, "medium": 45, "low": 20, "info": 5}

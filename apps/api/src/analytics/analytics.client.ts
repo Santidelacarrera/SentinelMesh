@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AssetContext, PolicyDoc, Severity } from '../store/models';
+import { propagationHeaders } from '../common/correlation';
+import { CircuitBreaker } from '../common/breaker';
 
 export interface CorrelateInput { ruleId: string; kind: 'vulnerability' | 'secret'; severity: Severity; likelyFalsePositive?: boolean; asset?: Pick<AssetContext, 'internetFacing' | 'behindGateway' | 'handlesCriticalData' | 'environment'> }
 export interface CorrelateOutput { severity: Severity; exposureScore: number; suppressed: boolean; suppressionReason?: string; rationale: string[] }
@@ -53,17 +55,21 @@ export function localSummary(evidence: EvidenceItem[]): SummaryOutput {
 @Injectable()
 export class AnalyticsClient {
   private log = new Logger('Analytics');
+  breaker = new CircuitBreaker({ threshold: 3, coolDownMs: 15_000 });   // 3 failures ⇒ skip the 2 s timeout and use the local fallback for 15 s
   constructor(private baseUrl = process.env.ANALYTICS_URL, private fetchImpl: typeof fetch = fetch, private timeoutMs = 2000) {}
 
   private async post<T>(path: string, body: unknown): Promise<T | undefined> {
-    if (!this.baseUrl) return undefined;
+    if (!this.baseUrl || !this.breaker.allow()) return undefined;
     try {
       // baseUrl is operator config (env), never request data, so it cannot be steered by a caller (no SSRF surface).
       const url = new URL(path, this.baseUrl);
-      const res = await this.fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(this.timeoutMs) });
+      const res = await this.fetchImpl(url, { method: 'POST', headers: { ...propagationHeaders(), 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(this.timeoutMs) });
       if (!res.ok) throw new Error(`status ${res.status}`);
-      return (await res.json()) as T;
+      const out = (await res.json()) as T;
+      this.breaker.success();
+      return out;
     } catch (e) {
+      this.breaker.failure();
       this.log.warn(`analytics ${path} unavailable, using local fallback: ${(e as Error).message}`);
       return undefined;
     }

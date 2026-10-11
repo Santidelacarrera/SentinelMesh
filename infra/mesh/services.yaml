@@ -1,0 +1,102 @@
+# Catálogo de la malla — ÚNICA fuente de verdad. `npm run mesh:gen` produce infra/mesh/generated/*.yaml (no editar a mano).
+# Supuestos a confirmar: los nombres Segundo Cerebro (contextrag-engine, shadowapi-guard) y las aristas entre ellos.
+# Añadir un microservicio = añadir una entrada aquí: recibe mTLS estricto, default-deny, circuit breaker y sidecar acotado automáticamente.
+
+namespace: segundo-cerebro
+trustDomain: cluster.local
+
+gateway:
+  name: sc-ingress
+  host: api.segundo-cerebro.example.com
+  tlsSecret: sc-gateway-tls            # cert del borde (cert-manager); la malla interna usa certs SPIFFE de Istio
+  timeout: 12s                         # presupuesto total de una petición externa
+  jwt:
+    issuer: https://idp.example.com/
+    jwksUri: https://idp.example.com/.well-known/jwks.json
+    audiences: [segundo-cerebro]
+    tenantClaim: tenant                # claim firmado → cabecera X-Tenant (el cliente no puede falsificarla)
+  routes:                              # qué servicios son accesibles desde fuera
+    - { prefix: /v1/guard/,    to: shadowapi-guard,    rewrite: / }    # prefijo con '/' final: evita rutas tipo //x tras la reescritura
+    - { prefix: /v1/sentinel/, to: sentinelmesh-api,   rewrite: / }
+    - { prefix: /,           to: sentinelmesh-web }
+
+tracing:
+  samplingPercent: 10                  # 100 en incidentes (Telemetry de override)
+  collector: otel-collector.observability.svc.cluster.local
+  collectorPort: 4317
+
+# Propagación: Envoy genera/conserva x-request-id y los spans, pero NO copia cabeceras entre la petición entrante y las salientes.
+# Cada servicio debe reenviarlas (ver apps/api/src/common/correlation.ts y services/analytics/app/correlation.py).
+propagate: [x-request-id, x-tenant, traceparent, tracestate, baggage, b3]
+
+defaults:
+  timeout: 4s
+  # Reintentos SOLO ante fallos de conexión/rechazo (rápidos y seguros). Nunca ante 5xx ni timeouts: reintentar un servicio lento lo hunde (tormenta de reintentos).
+  # El tiempo total de una ruta es `timeout` (los reintentos comparten ese presupuesto), así el tiempo no se multiplica por salto.
+  retries: { attempts: 2, on: "connect-failure,refused-stream,unavailable,reset" }
+  circuit:
+    maxConnections: 100
+    http1MaxPendingRequests: 50        # cola corta: mejor fallar rápido (503) que acumular latencia
+    http2MaxRequests: 200
+    maxRequestsPerConnection: 0
+    consecutive5xx: 5                  # 5 errores seguidos expulsan la instancia…
+    interval: 10s
+    baseEjectionTime: 30s              # …30 s × nº de expulsiones (backoff automático)
+    maxEjectionPercent: 50             # nunca aísla más de la mitad: evita vaciar el servicio
+    minHealthPercent: 30
+  resources: { cpu: 100m, memory: 128Mi }
+
+services:
+  shadowapi-guard:
+    port: 8080
+    timeout: 8s
+    callers: [gateway]                 # recibe tráfico externo
+    egressTo: [contextrag-engine, sentinelmesh-api]
+    routes:
+      - { name: read,  methods: [GET, HEAD], retries: true }
+      - { name: write, methods: [POST, PUT, PATCH, DELETE], retries: false }
+
+  contextrag-engine:
+    port: 8080
+    timeout: 5s                        # consultas RAG: más lentas, pero menos que su llamante (shadowapi-guard 8 s)
+    callers: [shadowapi-guard]
+    allow:
+      shadowapi-guard: { methods: [POST], paths: [/v1/query, /v1/embed] }
+    routes:
+      - { name: query, methods: [POST], paths: [/v1/query, /v1/embed], retries: true }   # POST idempotente (solo lectura)
+    circuit: { http2MaxRequests: 64, consecutive5xx: 3 }                                  # costoso por petición: umbral más bajo
+
+  sentinelmesh-api:
+    port: 3000
+    timeout: 6s
+    callers: [gateway, shadowapi-guard]
+    allow:                             # shadowapi-guard solo puede notificar anomalías, nada más; el gateway solo la API pública
+      shadowapi-guard: { methods: [POST], paths: [/api/v1/incidents/trigger] }
+      gateway: { methods: [GET, HEAD, POST, PUT, PATCH, DELETE], paths: [/api/v1/*, /healthz] }
+    egressTo: [sentinelmesh-analytics]
+    external:
+      - { host: secretsmanager.us-east-1.amazonaws.com, port: 443 }
+      - { host: wafv2.us-east-1.amazonaws.com, port: 443 }
+      - { host: postgres.data.svc.cluster.local, port: 5432, protocol: TCP }
+      - { host: redis.data.svc.cluster.local, port: 6379, protocol: TCP }
+    routes:
+      - { name: read,  methods: [GET, HEAD], retries: true }
+      - { name: write, methods: [POST, PUT, PATCH, DELETE], retries: false }     # aprobaciones, rotaciones: jamás reintentar solos
+
+  sentinelmesh-analytics:
+    port: 8000
+    timeout: 2s                        # la API tiene fallback local → falla rápido
+    callers: [sentinelmesh-api]
+    allow:
+      sentinelmesh-api: { methods: [POST, GET], paths: [/v1/*, /healthz] }
+    routes:
+      - { name: all, methods: [GET, POST], retries: true }                       # cálculos puros ⇒ idempotentes
+
+  sentinelmesh-web:
+    port: 80
+    timeout: 3s
+    callers: [gateway]
+    allow:
+      gateway: { methods: [GET, HEAD] }
+    routes:
+      - { name: static, methods: [GET, HEAD], retries: true }

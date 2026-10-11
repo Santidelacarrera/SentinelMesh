@@ -1,0 +1,158 @@
+# GENERADO por infra/mesh/generate.mjs desde services.yaml — no editar a mano.
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: sc-ingress
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      hosts:
+        - api.segundo-cerebro.example.com
+      tls:
+        mode: SIMPLE
+        credentialName: sc-gateway-tls
+        minProtocolVersion: TLSV1_2
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - api.segundo-cerebro.example.com
+      tls:
+        httpsRedirect: true
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: sc-ingress-routes
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  hosts:
+    - api.segundo-cerebro.example.com
+  gateways:
+    - sc-ingress
+  http:
+    - name: r0-shadowapi-guard
+      match:
+        - uri:
+            prefix: /v1/guard/
+      rewrite:
+        uri: /
+      timeout: 12s
+      route:
+        - destination:
+            host: shadowapi-guard.segundo-cerebro.svc.cluster.local
+            port:
+              number: 8080
+      headers:
+        response:
+          set:
+            strict-transport-security: max-age=63072000; includeSubDomains
+            x-content-type-options: nosniff
+          remove:
+            - server
+            - x-envoy-upstream-service-time
+    - name: r1-sentinelmesh-api
+      match:
+        - uri:
+            prefix: /v1/sentinel/
+      rewrite:
+        uri: /
+      timeout: 12s
+      route:
+        - destination:
+            host: sentinelmesh-api.segundo-cerebro.svc.cluster.local
+            port:
+              number: 3000
+      headers:
+        response:
+          set:
+            strict-transport-security: max-age=63072000; includeSubDomains
+            x-content-type-options: nosniff
+          remove:
+            - server
+            - x-envoy-upstream-service-time
+    - name: r2-sentinelmesh-web
+      match:
+        - uri:
+            prefix: /
+      timeout: 12s
+      route:
+        - destination:
+            host: sentinelmesh-web.segundo-cerebro.svc.cluster.local
+            port:
+              number: 80
+      headers:
+        response:
+          set:
+            strict-transport-security: max-age=63072000; includeSubDomains
+            x-content-type-options: nosniff
+          remove:
+            - server
+            - x-envoy-upstream-service-time
+---
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata:
+  name: gateway-jwt
+  namespace: istio-system
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  selector:
+    matchLabels:
+      istio: ingressgateway
+  jwtRules:
+    - issuer: https://idp.example.com/
+      jwksUri: https://idp.example.com/.well-known/jwks.json
+      audiences:
+        - segundo-cerebro
+      forwardOriginalToken: false
+      outputClaimToHeaders:
+        - header: x-tenant
+          claim: tenant
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: gateway-require-tenant-jwt
+  namespace: istio-system
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  selector:
+    matchLabels:
+      istio: ingressgateway
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            requestPrincipals:
+              - "*"
+      when:
+        - key: request.auth.claims[tenant]
+          notValues:
+            - ""
+    - to:
+        - operation:
+            methods:
+              - GET
+              - HEAD
+            paths:
+              - /
+              - /assets/*
+              - /healthz

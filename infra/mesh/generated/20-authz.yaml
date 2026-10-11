@@ -1,0 +1,161 @@
+# GENERADO por infra/mesh/generate.mjs desde services.yaml — no editar a mano.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec: {}
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-shadowapi-guard
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  selector:
+    matchLabels:
+      app: shadowapi-guard
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account
+      to:
+        - operation:
+            ports:
+              - "8080"
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-contextrag-engine
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  selector:
+    matchLabels:
+      app: contextrag-engine
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/segundo-cerebro/sa/shadowapi-guard
+      to:
+        - operation:
+            methods:
+              - POST
+            paths:
+              - /v1/query
+              - /v1/embed
+            ports:
+              - "8080"
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-sentinelmesh-api
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  selector:
+    matchLabels:
+      app: sentinelmesh-api
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account
+      to:
+        - operation:
+            methods:
+              - GET
+              - HEAD
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+            paths:
+              - /api/v1/*
+              - /healthz
+            ports:
+              - "3000"
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/segundo-cerebro/sa/shadowapi-guard
+      to:
+        - operation:
+            methods:
+              - POST
+            paths:
+              - /api/v1/incidents/trigger
+            ports:
+              - "3000"
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-sentinelmesh-analytics
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  selector:
+    matchLabels:
+      app: sentinelmesh-analytics
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/segundo-cerebro/sa/sentinelmesh-api
+      to:
+        - operation:
+            methods:
+              - POST
+              - GET
+            paths:
+              - /v1/*
+              - /healthz
+            ports:
+              - "8000"
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-sentinelmesh-web
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  selector:
+    matchLabels:
+      app: sentinelmesh-web
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account
+      to:
+        - operation:
+            methods:
+              - GET
+              - HEAD
+            ports:
+              - "80"

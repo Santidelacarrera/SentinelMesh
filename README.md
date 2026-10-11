@@ -65,6 +65,9 @@ Producción: `INFRA_MODE=aws`, OIDC (`OIDC_ISSUER`…), firma KMS/Ed25519 y Post
 
 Qué está simulado y qué falta para producción: ver la última sección de [`docs/architecture.md`](docs/architecture.md).
 
+## Malla de servicios (mTLS, circuit breakers, trazabilidad)
+Configuración de red para el ecosistema «Segundo Cerebro»: [`docs/mesh.md`](docs/mesh.md). Catálogo único `infra/mesh/services.yaml` → `npm run mesh:gen` → `infra/mesh/generated/` (Istio + NetworkPolicy); `infra/mesh/validate.sh` la valida sin clúster.
+
 ## La consola
 - **Resumen**: una frase que dice dónde estás (hallazgos, credenciales expuestas, firmas pendientes) y un mapa que sitúa cada activo según esté expuesto a Internet y protegido por gateway; es lo que explica su puntuación.
 - **Hallazgos**: ordenados por exposición real; cada uno muestra el desglose «severidad del escáner → ajustes por contexto → puntuación» y la cadena informe (hash) → hallazgo → plan.

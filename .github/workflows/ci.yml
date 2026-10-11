@@ -60,3 +60,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: console-screenshots, path: apps/web/shots }
+  mesh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Validate the service mesh configuration (schema, istioctl analyze, invariants)
+        run: infra/mesh/validate.sh
