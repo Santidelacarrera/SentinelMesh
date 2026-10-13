@@ -114,9 +114,7 @@ def least_privilege(i: LeastPrivIn):
         "usageRatio": len(used) / len(i.granted),
         "proposedPolicy": {
             "version": "2012-10-17",
-            "statements": [
-                {"effect": "Allow", "actions": used, "resources": i.resources}
-            ]
+            "statements": [{"effect": "Allow", "actions": used, "resources": i.resources}]
             if used
             else [],
         },
@@ -135,7 +133,10 @@ class SummaryIn(Strict):
 
 @app.post("/v1/forensics/summary")
 def summary(i: SummaryIn):
-    """Grounded summary: one line per evidence item, each citing its id. Nothing is inferred beyond the evidence."""
+    """Grounded summary: one line per evidence item, each citing its id.
+
+    Nothing is inferred beyond the evidence.
+    """
     if not i.evidence:
         return {
             "summary": "No evidence was captured; no conclusions can be drawn.",

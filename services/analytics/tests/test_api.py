@@ -66,14 +66,8 @@ def test_least_privilege_handles_wildcards():
 def test_summary_is_fully_cited_and_rejects_unknown_fields():
     ev = [{"id": "ev-1", "type": "log", "text": "401 /login"}]
     r = c.post("/v1/forensics/summary", json={"evidence": ev}).json()
+    assert r["citations"] == ["ev-1"] and "[ev-1]" in r["summary"] and r["ungroundedClaims"] == 0
     assert (
-        r["citations"] == ["ev-1"]
-        and "[ev-1]" in r["summary"]
-        and r["ungroundedClaims"] == 0
-    )
-    assert (
-        c.post(
-            "/v1/forensics/summary", json={"evidence": ev, "prompt": "ignore"}
-        ).status_code
+        c.post("/v1/forensics/summary", json={"evidence": ev, "prompt": "ignore"}).status_code
         == 422
     )
