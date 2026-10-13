@@ -80,10 +80,10 @@ export function parseZap(doc: unknown): RawFinding[] {
 }
 
 /** Secret-scanner webhook (gitleaks/trufflehog-shaped). The raw secret is masked immediately and never stored. */
-const SecretHook = z.object({ findings: z.array(z.object({ rule: z.string(), secret: z.string().min(1), file: z.string().optional(), line: z.number().optional(), repo: z.string().optional(), verified: z.boolean().optional(), entropy: z.number().optional() })) });
+const SecretHook = z.object({ findings: z.array(z.object({ rule: z.string(), secret: z.string().min(1).max(4096), file: z.string().optional(), line: z.number().optional(), repo: z.string().optional(), verified: z.boolean().optional(), entropy: z.number().optional() })) });
 export function parseSecrets(doc: unknown): RawFinding[] {
   return SecretHook.parse(doc).findings.map((f): RawFinding => {
-    const placeholder = /(^|[^a-z0-9])(example|dummy|changeme|placeholder|your[_-]?(api[_-]?)?(key|token|secret)|x{4,})/i.test(f.secret) || (f.entropy !== undefined && f.entropy < 2.5);
+    const placeholder = looksLikePlaceholder(f.secret) || (f.entropy !== undefined && f.entropy < 2.5);
     return {
       kind: 'secret', ruleId: f.rule, title: `Credencial expuesta (${f.rule})`,
       description: `Secreto ${maskSecret(f.secret)} detectado en ${f.file ?? 'el repositorio'}${f.verified ? ' (verificado como activo)' : ''}`,
@@ -92,6 +92,20 @@ export function parseSecrets(doc: unknown): RawFinding[] {
       likelyFalsePositive: !f.verified && (placeholder || isTestPath(f.file)),
     };
   });
+}
+
+/** Placeholder words must start a token (so `…7EXAMPLE` inside a real key id is NOT a placeholder). Linear scan, no backtracking. */
+const PLACEHOLDER_WORDS = ['example', 'dummy', 'changeme', 'placeholder', 'xxxx', 'yourkey', 'yourapikey', 'yourtoken', 'yoursecret', 'yourapitoken'];
+export function looksLikePlaceholder(secret: string): boolean {
+  const s = secret.toLowerCase();
+  const squashed = s.replace(/[_-]/g, '');
+  for (const w of PLACEHOLDER_WORDS) {
+    for (const hay of [s, squashed]) {
+      let i = hay.indexOf(w);
+      while (i !== -1) { if (i === 0 || !/[a-z0-9]/.test(hay[i - 1])) return true; i = hay.indexOf(w, i + 1); }
+    }
+  }
+  return false;
 }
 
 function isTestPath(p?: string) { return !!p && /(^|\/)(tests?|__tests__|fixtures?|examples?|docs?)\//i.test(p); }

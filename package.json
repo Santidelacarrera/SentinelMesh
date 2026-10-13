@@ -9,7 +9,18 @@
     "test": "npm test -w apps/api && npm test -w apps/web",
     "test:e2e": "npm run e2e -w apps/web",
     "build": "npm run build -w apps/api && npm run build -w apps/web",
-    "simulate": "npm run simulate -w apps/api",
-    "demo": "npm run demo -w apps/api"
+    "simulate": "npm run simulate -w apps/api --",
+    "demo": "npm run demo -w apps/api",
+    "lint": "eslint . --max-warnings=0",
+    "audit:deps": "npm audit --audit-level=high",
+    "check": "npm run lint && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-security": "^4.2.0",
+    "globals": "^17.13.0",
+    "typescript-eslint": "^8.71.2"
   }
 }

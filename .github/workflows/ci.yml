@@ -15,6 +15,15 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
+      - run: npm run lint
+      - name: Dependency audit (fails on high/critical, dev dependencies included)
+        run: npm audit --audit-level=high
+      - name: Start the Python analytics service (contract test against the TypeScript fallback)
+        run: |
+          python3 -m venv /tmp/analytics-venv
+          /tmp/analytics-venv/bin/pip install -q -r services/analytics/requirements.txt
+          (cd services/analytics && /tmp/analytics-venv/bin/uvicorn app.main:app --port 8099 > /tmp/analytics.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf localhost:8099/healthz >/dev/null && break; sleep 1; done
       - name: Start AWS API emulator (moto) and prepare database
         run: |
           # isolated venv: the runner's system pyOpenSSL/boto3 clash with moto's dependencies
@@ -30,10 +39,16 @@ jobs:
         env:
           REDIS_URL: "redis://localhost:6379"
           AWS_TEST_ENDPOINT: "http://localhost:5555"
+          ANALYTICS_TEST_URL: "http://127.0.0.1:8099"
           TEST_DATABASE_URL: "postgres://sentinel_app:dev-only-app@localhost:5432/sm"
           TEST_DATABASE_ADMIN_URL: "postgres://postgres:ci@localhost:5432/sm"
       - run: npm run build
       - run: npm run simulate
+      - name: Simulation with a rejecting approver must change nothing
+        run: |
+          npm run simulate -- --reject | tee /tmp/reject.log
+          grep -q 'infra changes: \[\]' /tmp/reject.log
+          grep -q 'old credential v1 valid: true' /tmp/reject.log
   python:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: services/analytics } }
@@ -41,7 +56,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.13" }
-      - run: pip install -r requirements.txt && pytest -q
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check . && ruff format --check .
+      - run: bandit -q -r app -ll
+      - run: pytest -q
   web:
     runs-on: ubuntu-latest
     steps:
