@@ -17,7 +17,8 @@ export function Decisions({ id }: { id?: string }) {
   const list = useResource<Approval[]>('/approvals', 5000);
   const items = list.data ?? [], pending = items.filter((a) => a.status === 'pending'), done = items.filter((a) => a.status !== 'pending');
   const current = items.find((a) => a.id === id) ?? pending[0] ?? done[0];
-  useEffect(() => { if (!id && current) history.replaceState(null, '', `#/decisiones/${current.id}`); }, [id, current?.id]);
+  const currentId = current?.id;
+  useEffect(() => { if (!id && currentId) history.replaceState(null, '', `#/decisiones/${currentId}`); }, [id, currentId]);
   return (
     <Page title="Decisiones" lede="Nada destructivo se ejecuta sin una firma. Revisa el cambio exacto y firma, o recházalo con un motivo.">
       {list.error && <ErrorBanner message={list.error} retry={list.reload} />}

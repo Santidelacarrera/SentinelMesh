@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { Queue, Worker } from 'bullmq';
 
 export interface Job { orgId: string; executionId: string }
 export type JobHandler = (job: Job) => Promise<void>;
@@ -37,10 +38,9 @@ export class MemoryQueue implements JobQueue {
 }
 
 export class BullQueue implements JobQueue {
-  private queue: import('bullmq').Queue;
-  private worker?: import('bullmq').Worker;
+  private queue: Queue;
+  private worker?: Worker;
   constructor(private redisUrl: string, private name = 'sentinelmesh-workflows') {
-    const { Queue } = require('bullmq') as typeof import('bullmq');
     this.queue = new Queue(name, { connection: BullQueue.conn(redisUrl) });
   }
   static conn(url: string) {
@@ -52,7 +52,6 @@ export class BullQueue implements JobQueue {
     await this.queue.add('advance', job, { attempts: 5, backoff: { type: 'exponential', delay: 1000 }, removeOnComplete: 1000, removeOnFail: false });
   }
   process(handler: JobHandler) {
-    const { Worker } = require('bullmq') as typeof import('bullmq');
     this.worker = new Worker(this.name, async (j) => handler(j.data as Job), { connection: BullQueue.conn(this.redisUrl), concurrency: 4 });
   }
   async close() { await this.worker?.close(); await this.queue.close(); }

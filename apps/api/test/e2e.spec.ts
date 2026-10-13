@@ -68,7 +68,6 @@ describe('ingest & false-positive suppression', () => {
 });
 
 async function seedCredential() {
-  t.analyst; // keep
   const r = await t.analyst.post('/api/v1/scans/ingest', { format: 'secrets', source: 'gl', report: { findings: [{ rule: 'aws', secret: AWS, file: 'a.js', repo: 'payments', verified: true }] } });
   const cred = t.db.credentials.list(ORG)[0];
   t.secrets.seed(cred.id);

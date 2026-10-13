@@ -16,7 +16,8 @@ export class AuditTrail {
   append(orgId: string, actor: string, event: string, data: unknown = {}): AuditEntry {
     const chain = this.chains.get(orgId) ?? [];
     const prev = chain.at(-1);
-    const base = { id: newId('aud'), orgId, seq: chain.length + 1, at: now(), actor, event, data: redact(data), prevHash: prev?.hash ?? GENESIS };
+    // JSON round-trip BEFORE hashing: what we hash must be exactly what a store (JSONB included) gives back — undefined keys vanish there.
+    const base = { id: newId('aud'), orgId, seq: chain.length + 1, at: now(), actor, event, data: JSON.parse(JSON.stringify(redact(data) ?? null)), prevHash: prev?.hash ?? GENESIS };
     const entry: AuditEntry = { ...base, hash: AuditTrail.hash(base) };
     chain.push(Object.freeze(entry) as AuditEntry);
     this.chains.set(orgId, chain);

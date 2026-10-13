@@ -30,11 +30,12 @@ function Login({ onKey, error }: { onKey: (k: string) => void; error?: string })
 
 export function App() {
   const [key, setKey] = useState(() => { try { return sessionStorage.getItem('sm_key') ?? ''; } catch { return ''; } });
-  const [me, setMe] = useState<Me>(), [error, setError] = useState<string>();
+  const [who, setWho] = useState<{ key: string; me: Me }>(), [error, setError] = useState<string>();
+  const me = who?.key === key ? who.me : undefined;      // a stale identity from a previous key is never shown
   const api = useMemo(() => new Api(key), [key]);
-  useEffect(() => { if (!key) return; setMe(undefined); api.get<Me>('/me').then(setMe).catch((e: Error) => { setError(e.message); setKey(''); try { sessionStorage.removeItem('sm_key'); } catch { /* private mode */ } }); }, [api, key]);
+  useEffect(() => { if (!key) return; api.get<Me>('/me').then((m) => setWho({ key, me: m })).catch((e: Error) => { setError(e.message); setKey(''); try { sessionStorage.removeItem('sm_key'); } catch { /* private mode */ } }); }, [api, key]);
   const signIn = (k: string) => { setError(undefined); try { sessionStorage.setItem('sm_key', k); } catch { /* private mode */ } setKey(k); };
-  const signOut = () => { try { sessionStorage.removeItem('sm_key'); } catch { /* ignore */ } setKey(''); setMe(undefined); };
+  const signOut = () => { try { sessionStorage.removeItem('sm_key'); } catch { /* ignore */ } setKey(''); };
   if (!key) return <Login onKey={signIn} error={error} />;
   if (!me) return <div className="login"><div className="skel" style={{ width: 220 }} aria-busy="true" aria-label="Entrando" /></div>;
   return <Shell api={api} me={me} signOut={signOut} />;
