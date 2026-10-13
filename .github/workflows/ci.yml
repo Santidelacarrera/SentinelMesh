@@ -44,6 +44,11 @@ jobs:
           TEST_DATABASE_ADMIN_URL: "postgres://postgres:ci@localhost:5432/sm"
       - run: npm run build
       - run: npm run simulate
+      - name: Simulation with a rejecting approver must change nothing
+        run: |
+          npm run simulate -- --reject | tee /tmp/reject.log
+          grep -q 'infra changes: \[\]' /tmp/reject.log
+          grep -q 'old credential v1 valid: true' /tmp/reject.log
   python:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: services/analytics } }

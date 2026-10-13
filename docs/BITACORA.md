@@ -23,13 +23,78 @@
 | No agregar componentes de nube hasta que el núcleo esté probado | Cumplido: **esta rama no añade ningún componente de nube**. Los adaptadores AWS que ya estaban en `main` siguen desactivados por defecto | ADR-0001; test `core runs at cost $0 by default` (sin `INFRA_MODE` ningún puerto es de nube) |
 
 ## 3. Pruebas: comandos ejecutados y salida
+Ejecución final del 2026-10-13 sobre el commit de esta rama. Además se reprodujo en un **clon limpio** (`git clone` + `npm ci` + `lint` + `build` + `npm test` sin servicios: 77 pasadas / 20 omitidas por falta de servicios; `simulate`; arranque de la API y `/healthz`; `pip install -r requirements-dev.txt` + `pytest`).
+
+**Bugs reales encontrados por la verificación y corregidos en esta rama:** (1) cadena de auditoría rota tras releer JSONB; (2) `npm run simulate -- --reject` ignoraba el flag (el script raíz no reenviaba argumentos): ahora funciona y el CI lo comprueba; (3) `ruff` daba resultados distintos según el directorio desde el que se lanzara (config explícita); (4) los scripts de demo/simulación fallaban si había `REDIS_URL`/`DATABASE_URL` en el entorno.
 ```
-<<PRUEBAS>>
+$ npm test   # sin servicios externos
+Test Suites: 4 skipped, 6 passed, 6 of 10 total
+Tests:       20 skipped, 77 passed, 97 total
+      Tests  8 passed (8)
+[exit 0]
+
+$ npm run test:coverage -w apps/api   # con Redis, Postgres, emulador AWS y servicio de analítica
+Statements   : 93.88% ( 1429/1522 )
+Branches     : 75.52% ( 571/756 )
+Functions    : 92.09% ( 326/354 )
+Lines        : 98.26% ( 1021/1039 )
+Test Suites: 10 passed, 10 total
+Tests:       99 passed, 99 total
+[exit 0]
+
+$ npm test -w apps/web
+ Test Files  2 passed (2)
+      Tests  8 passed (8)   [exit 0]
+
+$ npm run e2e -w apps/web   # Playwright (Chromium) contra la API demo
+  ✓  6 e2e/console.spec.ts:77:1 › is usable on a phone (661ms)
+
+  6 passed (21.4s)
+
+$ npm run simulate
+▶ 6. Outcome
+   old credential v1 valid: false   infra changes: [{"op":"isolate","arg":"auth-api"}]
+   audit entries: 21, hash-chain intact: true
+[exit 0]
+
+$ npm run simulate -- --reject
+▶ 6. Outcome
+   old credential v1 valid: true   infra changes: []
+   audit entries: 18, hash-chain intact: true
+[exit 0]
+
+$ pytest -q services/analytics
+4 passed, 1 warning in 0.46s
+[exit 0]
 ```
 
 ## 4. Seguridad y lint
 ```
-<<SEGURIDAD>>
+$ npm run lint
+> sentinelmesh@0.1.0 lint
+> eslint . --max-warnings=0
+
+[exit 0]
+
+$ npm run audit:deps
+(informa de 20 vulnerabilidades MODERADAS transitorias de herramientas de prueba; 0 altas, 0 críticas)
+npm run audit:deps = npm audit --audit-level=high → exit 0
+[exit 0]
+
+$ npm audit --omit=dev
+found 0 vulnerabilities
+[exit 0]
+
+$ ruff check services/analytics
+All checks passed!
+[exit 0]
+
+$ ruff format --check services/analytics
+3 files already formatted
+[exit 0]
+
+$ bandit -q -r services/analytics/app -ll
+(sin hallazgos)   [exit 0]
 ```
 Notas: `npm audit` (completo, con dependencias de desarrollo) informa de **20 vulnerabilidades moderadas** transitorias de la herramienta de pruebas (Jest 30 → `babel-plugin-istanbul` → `js-yaml@3` → `argparse@1` → `sprintf-js`, sin parche publicado). **No se despliegan** (`npm audit --omit=dev` = 0) y no hay altas ni críticas. Semgrep no se pudo ejecutar (el registro de reglas está bloqueado en el entorno); lo sustituyen ESLint con `eslint-plugin-security` y bandit.
 

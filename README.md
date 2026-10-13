@@ -36,7 +36,7 @@ pytest -q services/analytics            # servicio de analítica
 dispara un brute-force, congela la evidencia, muestra la bandeja con los diffs y aplica/rechaza. Termina con la cadena de auditoría verificada.
 
 ### Pruebas de integración (opcionales: Redis, Postgres, emulador de AWS, contrato con Python)
-Se saltan solas si falta la variable. Con todo activado la API pasa **89 pruebas** (cobertura de líneas 97 %, `npm run test:coverage -w apps/api`).
+Se saltan solas si falta la variable. Con todo activado la API pasa **99 pruebas** (cobertura: líneas 98 %, sentencias 94 %; `npm run test:coverage -w apps/api`).
 ```bash
 docker compose up -d redis postgres                       # o servicios locales; db/schema.sql y db/roles.sql se aplican al arrancar postgres
 python3 -m venv /tmp/moto && /tmp/moto/bin/pip install "moto[server,s3,secretsmanager,wafv2,iam,kms,ec2]" && /tmp/moto/bin/moto_server -p 5555 &
