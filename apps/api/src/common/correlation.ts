@@ -16,6 +16,8 @@ const TENANT = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const TRACEPARENT = /^[\da-f]{2}-[\da-f]{32}-[\da-f]{16}-[\da-f]{2}$/;
 const VALID: Record<string, (v: string) => boolean> = {
   'x-request-id': (v) => ID.test(v), 'x-tenant': (v) => TENANT.test(v), traceparent: (v) => TRACEPARENT.test(v),
+  // bounded quantifiers only (no ambiguous nesting): linear time, the rule's heuristic is a false positive here
+  // eslint-disable-next-line security/detect-unsafe-regex
   tracestate: (v) => v.length <= 512 && /^[\x20-\x7e]*$/.test(v), baggage: (v) => v.length <= 1024 && /^[\x20-\x7e]*$/.test(v), b3: (v) => /^[\da-f]{16,32}(-[\da-f]{16}(-[01d](-[\da-f]{16})?)?)?$|^[01d]$/.test(v),
 };
 

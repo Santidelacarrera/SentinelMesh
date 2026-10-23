@@ -26,4 +26,4 @@ describe('HoldToSign', () => {
     fireEvent.pointerDown(screen.getByRole('button')); run(500); expect(ok).not.toHaveBeenCalled();
   });
 });
-describe('Sev', () => { it('names the level in text, not only colour', () => { render(<Sev level="critical" />); expect(screen.getByText('Crítica')).toBeInTheDocument(); }); });
+describe('Sev', () => { it('names the level in text, not only colour', () => { render(<Sev level="critical" />); expect(screen.getByText('Crítica')).toBeTruthy(); }); });

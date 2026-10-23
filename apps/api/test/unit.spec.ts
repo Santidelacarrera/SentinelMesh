@@ -1,6 +1,6 @@
 import { redact, redactString, maskSecret } from '../src/common/mask';
 import { assertSafeUrl, isPrivateIp } from '../src/common/ssrf';
-import { AuditTrail } from '../src/audit/audit-trail';
+import { AuditTrail, MemoryAuditStore } from '../src/audit/audit-trail';
 import { localCorrelate, localLeastPrivilege } from '../src/analytics/analytics.client';
 
 describe('secret masking', () => {
@@ -52,6 +52,20 @@ describe('audit trail', () => {
   });
 });
 
+describe('audit trail persistence round-trip', () => {
+  it('a chain written with undefined fields still verifies after a JSON/JSONB round-trip (regression)', async () => {
+    const a = new AuditTrail();
+    await a.append('o', 'u1', 'approval.approved', { approvalId: 'x', comment: undefined, nested: { gone: undefined, kept: 1 } });
+    await a.append('o', 'u1', 'step.succeeded', { output: { v: undefined } });
+    const roundTripped = JSON.parse(JSON.stringify(await a.list('o'))); // what a JSONB column hands back: undefined keys are gone
+    const store = new MemoryAuditStore();
+    for (const e of roundTripped) await store.append('o', () => e);
+    const b = new AuditTrail();
+    b.useStore(store);
+    expect(await b.verify('o')).toEqual({ ok: true });
+  });
+});
+
 describe('local analytics fallback', () => {
   it('lowers exposure for gateway-protected dev assets and suppresses false positives', () => {
     const exposed = localCorrelate({ ruleId: 'r', kind: 'vulnerability', severity: 'high', asset: { internetFacing: true, behindGateway: false, handlesCriticalData: true, environment: 'prod' } });
@@ -79,5 +93,60 @@ describe('production guard', () => {
       expect(productionProblems({ NODE_ENV: 'production', INFRA_MODE: 'aws', DATABASE_URL: 'x', REDIS_URL: 'x', OBJECT_STORE_BUCKET: 'b', TERRAFORM_ENABLED: '1' } as any)).toEqual([expect.stringContaining('TF_BACKEND_HCL')]);
       expect(productionProblems({ NODE_ENV: 'development' } as any)).toEqual([]); }
     finally { process.env = prev; }
+  });
+});
+
+describe('placeholder detection (false-positive suppression for leaked-secret reports)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { looksLikePlaceholder } = require('../src/ingest/parsers');
+  it.each(['YOUR_API_KEY_HERE', 'your-token', 'changeme', 'dummy-secret-123', 'xxxxxxxxxxxx', 'abc_EXAMPLE_key', 'placeholder'])('%s is a placeholder', (s) => expect(looksLikePlaceholder(s)).toBe(true));
+  it.each(['AKIAIOSFODNN7EXAMPLE', 'ghp_abcdefghijklmnopqrstuvwxyz0123456789', 'k3Zp9QvT1mXw', 'sk-test-9f8e7d6c'])('%s is not', (s) => expect(looksLikePlaceholder(s)).toBe(false));
+  it('is linear on hostile input (no catastrophic backtracking)', () => {
+    const t0 = Date.now(); looksLikePlaceholder('x'.repeat(4096) + '!'); looksLikePlaceholder('your_'.repeat(800));
+    expect(Date.now() - t0).toBeLessThan(200);
+  });
+});
+
+describe('FsObjectStorage', () => {
+  it('refuses keys that escape its root', async () => {
+    const { FsObjectStorage } = await import('../src/storage/object-storage');
+    const { mkdtempSync } = await import('node:fs'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+    const root = mkdtempSync(join(tmpdir(), 'smfs-')); const st = new FsObjectStorage(root);
+    await st.put('a/b.json', '{}'); expect((await st.get('a/b.json'))!.toString()).toBe('{}');
+    await expect(st.put('../evil', 'x')).rejects.toThrow('invalid key');
+    await st.put('/etc/passwd', 'x');                                   // an absolute-looking key is just a name under root…
+    expect((await import('node:fs')).existsSync(join(root, 'etc/passwd'))).toBe(true);   // …it never reaches the real /etc
+    await expect(st.put('a/../../evil', 'x')).rejects.toThrow('invalid key');
+    expect(await st.get('../evil')).toBeUndefined();
+  });
+});
+
+describe('core runs at cost $0 by default', () => {
+  it('without INFRA_MODE every external port is the in-process simulation (no cloud client is built)', async () => {
+    const { boot } = await import('./helpers');
+    const { SimulatedSecrets, SimulatedInfra, SimulatedHealth, SimulatedForensics } = await import('../src/workflow/simulated');
+    const { PORTS } = await import('../src/workflow/ports');
+    const prev = process.env.INFRA_MODE; delete process.env.INFRA_MODE;
+    const t = await boot();
+    try {
+      expect(t.app.get(PORTS.SECRETS)).toBeInstanceOf(SimulatedSecrets);
+      expect(t.app.get(PORTS.INFRA)).toBeInstanceOf(SimulatedInfra);
+      expect(t.app.get(PORTS.HEALTH)).toBeInstanceOf(SimulatedHealth);
+      expect(t.app.get(PORTS.FORENSICS)).toBeInstanceOf(SimulatedForensics);
+    } finally { if (prev) process.env.INFRA_MODE = prev; await t.app.close(); }
+  });
+});
+
+describe('real entrypoint', () => {
+  it('bootstrap() starts an HTTP server that answers /healthz and enforces authentication', async () => {
+    process.env.NODE_ENV = 'test';
+    const { bootstrap } = await import('../src/main');
+    const app = await bootstrap(0);
+    try {
+      const base = (await app.getUrl()).replace('[::1]', '127.0.0.1');
+      expect((await fetch(`${base}/healthz`)).status).toBe(200);
+      expect((await fetch(`${base}/api/v1/exposures/summary`)).status).toBe(401);
+      expect((await fetch(`${base}/api/v1/exposures/summary`, { headers: { 'x-api-key': 'dev-viewer' } })).status).toBe(200);
+    } finally { await app.close(); }
   });
 });

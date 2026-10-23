@@ -9,6 +9,8 @@ export interface WafRuleSpec { name: string; action?: string; priority?: number;
 export interface IamSpec { roleName: string; proposed: { version: string; statements: Array<{ effect: string; actions: string[]; resources: string[] }> }; replacePolicyName?: string }
 export type HclFiles = Record<string, string>;
 
+// bounded quantifiers, anchored: linear time
+// eslint-disable-next-line security/detect-unsafe-regex
 const NAME = /^[A-Za-z0-9_-]{1,128}$/, CIDR = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/, ROLE = /^[\w+=,.@-]{1,64}$/;
 
 export function wafFiles(r: WafRuleSpec): HclFiles {

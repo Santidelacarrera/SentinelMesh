@@ -60,7 +60,7 @@ export class IngestService {
         await this.db.credentials.put(cred);
         await this.db.findings.update(orgId, row.id, { credentialId: cred.id });
       }
-      c.suppressed ? result.suppressed++ : result.created++;
+      if (c.suppressed) result.suppressed++; else result.created++;
     }
     scan.findingCount = result.created + result.suppressed;
     await this.db.scans.put(scan);

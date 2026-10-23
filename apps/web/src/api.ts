@@ -36,20 +36,21 @@ export interface Resource<T> { data?: T; error?: string; loading: boolean; reloa
 /** GET with optional polling. Keeps stale data on screen while reloading and never updates after unmount. */
 export function useResource<T>(path: string | null, pollMs = 0): Resource<T> {
   const { api } = useSession();
-  const [state, set] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: !!path });
+  // `for` records which path the data belongs to, so `loading` is derived (no synchronous setState inside the effect).
+  const [state, set] = useState<{ data?: T; error?: string; for?: string | null }>({});
   const alive = useRef(true), seq = useRef(0);
   const load = useCallback(() => {
     if (!path) return;
     const my = ++seq.current;
-    api.get<T>(path).then((data) => { if (alive.current && my === seq.current) set({ data, loading: false }); })
-      .catch((e: Error) => { if (alive.current && my === seq.current) set((s) => ({ data: s.data, error: e.message, loading: false })); });
+    api.get<T>(path).then((data) => { if (alive.current && my === seq.current) set({ data, for: path }); })
+      .catch((e: Error) => { if (alive.current && my === seq.current) set((s) => ({ data: s.data, error: e.message, for: path })); });
   }, [api, path]);
   useEffect(() => {
-    alive.current = true; set((s) => ({ data: s.data, loading: !!path })); load();
+    alive.current = true; load();
     const t = pollMs ? setInterval(load, pollMs) : undefined; window.addEventListener('sm:refresh', load);
     return () => { alive.current = false; if (t) clearInterval(t); window.removeEventListener('sm:refresh', load); };
   }, [load, pollMs, path]);
-  return { ...state, reload: load };
+  return { data: state.data, error: state.error, loading: !!path && state.for !== path, reload: load };
 }
 
 // ── toasts ──

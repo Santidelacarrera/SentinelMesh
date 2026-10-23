@@ -28,14 +28,18 @@ export function Page({ title, lede, actions, children }: { title: string; lede?:
 export function HoldToSign({ label, holdingLabel = 'Sigue pulsando…', ms = 1200, disabled, onConfirm }: { label: string; holdingLabel?: string; ms?: number; disabled?: boolean; onConfirm: () => void }) {
   const [p, setP] = useState(0);
   const raf = useRef(0), t0 = useRef(0), done = useRef(false);
-  const stop = () => { cancelAnimationFrame(raf.current); t0.current = 0; setP(0); };
-  const tick = () => {
-    const f = Math.min(1, (performance.now() - t0.current) / ms);
+  const stop = () => { cancelAnimationFrame(raf.current); started.current = false; t0.current = 0; setP(0); };
+  const started = useRef(false);
+  // Progress is driven by the timestamp rAF hands to the callback (no clock reads while rendering).
+  const tick = (ts: number) => {
+    if (!started.current) return;
+    if (!t0.current) t0.current = ts || 1;
+    const f = Math.min(1, (ts - t0.current) / ms);
     setP(f);
-    if (f >= 1) { if (!done.current) { done.current = true; onConfirm(); } t0.current = 0; return; }
+    if (f >= 1) { started.current = false; if (!done.current) { done.current = true; onConfirm(); } t0.current = 0; return; }
     raf.current = requestAnimationFrame(tick);
   };
-  const start = () => { if (disabled || t0.current) return; done.current = false; t0.current = performance.now(); raf.current = requestAnimationFrame(tick); };
+  const start = () => { if (disabled || started.current) return; done.current = false; started.current = true; t0.current = 0; raf.current = requestAnimationFrame(tick); };
   useEffect(() => () => cancelAnimationFrame(raf.current), []);
   return (
     <button type="button" className="hold" disabled={disabled} aria-describedby="hold-help"

@@ -40,7 +40,7 @@ export class AuditTrail {
   append(orgId: string, actor: string, event: string, data: unknown = {}): Promise<AuditEntry> {
     // JSON round-trip first: what we hash must be exactly what any store (JSONB included) will give back (undefined keys vanish).
     const rid = currentCorrelation()?.requestId;
-    const safe = JSON.parse(JSON.stringify(redact(rid && data && typeof data === 'object' && !Array.isArray(data) ? { ...(data as object), requestId: rid } : data)));
+    const safe = JSON.parse(JSON.stringify(redact(rid && data && typeof data === 'object' && !Array.isArray(data) ? { ...(data as object), requestId: rid } : data) ?? null));
     return this.store.append(orgId, (prev) => {
       const base = { id: newId('aud'), orgId, seq: (prev?.seq ?? 0) + 1, at: now(), actor, event, data: safe, prevHash: prev?.hash ?? GENESIS };
       return { ...base, hash: AuditTrail.hash(base) };

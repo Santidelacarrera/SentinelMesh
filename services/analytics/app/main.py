@@ -3,7 +3,9 @@
 No generative model is used to *state* facts: every output is derived from the input and
 carries its rationale / citations, so there is nothing to hallucinate.
 """
-from typing import Literal, Optional
+
+from typing import Literal
+
 from fastapi import FastAPI
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,7 +36,7 @@ class CorrelateIn(BaseModel):
     kind: Literal["vulnerability", "secret"]
     severity: Severity
     likelyFalsePositive: bool = False
-    asset: Optional[Asset] = None
+    asset: Asset | None = None
 
 
 @app.get("/healthz")
@@ -45,27 +47,53 @@ def healthz():
 @app.post("/v1/correlate")
 def correlate(i: CorrelateIn):
     if i.likelyFalsePositive:
-        return {"severity": "info", "exposureScore": 0, "suppressed": True,
-                "suppressionReason": "likely false positive (test/fixture/placeholder)",
-                "rationale": ["matched false-positive heuristics"]}
+        return {
+            "severity": "info",
+            "exposureScore": 0,
+            "suppressed": True,
+            "suppressionReason": "likely false positive (test/fixture/placeholder)",
+            "rationale": ["matched false-positive heuristics"],
+        }
     score, why = BASE[i.severity], []
     a = i.asset
     if a is None:
         why.append("no asset context: severity kept as reported (conservative)")
     else:
         score += 15 if a.internetFacing else -15
-        why.append("asset is internet-facing (+15)" if a.internetFacing else "asset not internet-facing (-15)")
+        why.append(
+            "asset is internet-facing (+15)"
+            if a.internetFacing
+            else "asset not internet-facing (-15)"
+        )
         if a.behindGateway:
-            score -= 10; why.append("protected by API gateway (-10)")
+            score -= 10
+            why.append("protected by API gateway (-10)")
         if a.handlesCriticalData:
-            score += 10; why.append("asset handles critical data (+10)")
+            score += 10
+            why.append("asset handles critical data (+10)")
         if a.environment == "dev":
-            score -= 20; why.append("dev environment (-20)")
+            score -= 20
+            why.append("dev environment (-20)")
     score = max(0, min(100, score))
-    sev = "critical" if score >= 85 else "high" if score >= 65 else "medium" if score >= 40 else "low" if score >= 15 else "info"
+    sev = (
+        "critical"
+        if score >= 85
+        else "high"
+        if score >= 65
+        else "medium"
+        if score >= 40
+        else "low"
+        if score >= 15
+        else "info"
+    )
     if i.kind == "secret" and ORDER.index(sev) < ORDER.index(i.severity):
         sev = i.severity  # a leaked secret is live regardless of where it was found
-    return {"severity": sev, "exposureScore": score, "suppressed": False, "rationale": why}
+    return {
+        "severity": sev,
+        "exposureScore": score,
+        "suppressed": False,
+        "rationale": why,
+    }
 
 
 class LeastPrivIn(Strict):
@@ -82,10 +110,18 @@ def _covers(grant: str, action: str) -> bool:
 def least_privilege(i: LeastPrivIn):
     used = sorted({a for a in i.used_events if any(_covers(g, a) for g in i.granted)})
     unused = sorted(g for g in i.granted if g not in used)
-    return {"granted": i.granted, "used": used, "unused": unused,
-            "usageRatio": len(used) / len(i.granted),
-            "proposedPolicy": {"version": "2012-10-17",
-                               "statements": [{"effect": "Allow", "actions": used, "resources": i.resources}] if used else []}}
+    return {
+        "granted": i.granted,
+        "used": used,
+        "unused": unused,
+        "usageRatio": len(used) / len(i.granted),
+        "proposedPolicy": {
+            "version": "2012-10-17",
+            "statements": [{"effect": "Allow", "actions": used, "resources": i.resources}]
+            if used
+            else [],
+        },
+    }
 
 
 class Evidence(Strict):
@@ -100,8 +136,19 @@ class SummaryIn(Strict):
 
 @app.post("/v1/forensics/summary")
 def summary(i: SummaryIn):
-    """Grounded summary: one line per evidence item, each citing its id. Nothing is inferred beyond the evidence."""
+    """Grounded summary: one line per evidence item, each citing its id.
+
+    Nothing is inferred beyond the evidence.
+    """
     if not i.evidence:
-        return {"summary": "No evidence was captured; no conclusions can be drawn.", "citations": [], "ungroundedClaims": 0}
+        return {
+            "summary": "No evidence was captured; no conclusions can be drawn.",
+            "citations": [],
+            "ungroundedClaims": 0,
+        }
     lines = [f"- [{e.id}] {e.type}: {e.text}" for e in i.evidence]
-    return {"summary": "\n".join(lines), "citations": [e.id for e in i.evidence], "ungroundedClaims": 0}
+    return {
+        "summary": "\n".join(lines),
+        "citations": [e.id for e in i.evidence],
+        "ungroundedClaims": 0,
+    }

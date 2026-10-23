@@ -1,4 +1,4 @@
-# Arquitectura de SentinelMesh
+# Arquitectura de SentinelMesh — Nexus Security & AI Lab
 
 ```
  scanners / gateways ──► API (NestJS) ──► Analytics (FastAPI)
