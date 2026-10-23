@@ -1,8 +1,10 @@
 """Correlation headers for the service mesh.
 
-Envoy mints `x-request-id` and the trace spans, but a service must forward the headers it received to anything it calls and must
-put the id in its own logs. Values are validated (log/header injection) and only an allowlist is ever propagated.
+Envoy mints `x-request-id` and the trace spans, but a service must forward the headers it
+received to anything it calls and must put the id in its own logs. Values are validated
+(log/header injection) and only an allowlist is ever propagated.
 """
+
 import contextvars
 import logging
 import re
@@ -17,7 +19,7 @@ _VALID = {
     "baggage": re.compile(r"^[\x20-\x7e]{0,1024}$"),
     "b3": re.compile(r"^([0-9a-f]{16,32}(-[0-9a-f]{16}(-[01d](-[0-9a-f]{16})?)?)?|[01d])$"),
 }
-_current: contextvars.ContextVar[dict] = contextvars.ContextVar("correlation", default={})
+_current: contextvars.ContextVar[dict] = contextvars.ContextVar("correlation", default=None)
 
 
 def from_headers(headers) -> dict:
@@ -32,7 +34,7 @@ def from_headers(headers) -> dict:
 
 def propagation_headers() -> dict:
     """Headers to attach to calls to OTHER MESH SERVICES (never credentials)."""
-    return dict(_current.get())
+    return dict(_current.get() or {})
 
 
 class CorrelationMiddleware:
@@ -50,7 +52,8 @@ class CorrelationMiddleware:
 
         async def send_with_id(message):
             if message["type"] == "http.response.start":
-                message.setdefault("headers", []).append((b"x-request-id", corr["x-request-id"].encode()))
+                rid = corr["x-request-id"].encode()
+                message.setdefault("headers", []).append((b"x-request-id", rid))
             await send(message)
 
         try:
@@ -61,7 +64,7 @@ class CorrelationMiddleware:
 
 class CorrelationLogFilter(logging.Filter):
     def filter(self, record):
-        c = _current.get()
+        c = _current.get() or {}
         record.request_id = c.get("x-request-id", "-")
         record.tenant = c.get("x-tenant", "-")
         return True
