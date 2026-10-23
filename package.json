@@ -13,7 +13,9 @@
     "demo": "npm run demo -w apps/api",
     "lint": "eslint . --max-warnings=0",
     "audit:deps": "npm audit --audit-level=high",
-    "check": "npm run lint && npm test && npm run build"
+    "check": "npm run lint && npm test && npm run build",
+    "mesh:gen": "node infra/mesh/generate.mjs",
+    "mesh:check": "node infra/mesh/generate.mjs --check && node --test infra/mesh/test/mesh.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -21,6 +23,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-security": "^4.2.0",
     "globals": "^17.13.0",
-    "typescript-eslint": "^8.71.2"
+    "typescript-eslint": "^8.71.2",
+    "yaml": "^2.9.1"
   }
 }

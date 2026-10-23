@@ -1,0 +1,31 @@
+# GENERADO por infra/mesh/generate.mjs desde services.yaml — no editar a mano.
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: segundo-cerebro-mesh
+  namespace: istio-system
+spec:
+  profile: default
+  meshConfig:
+    outboundTrafficPolicy:
+      mode: REGISTRY_ONLY
+    enableTracing: true
+    accessLogFile: /dev/stdout
+    accessLogEncoding: JSON
+    accessLogFormat: '{"ts":"%START_TIME%","method":"%REQ(:METHOD)%","path":"%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%","code":"%RESPONSE_CODE%","flags":"%RESPONSE_FLAGS%","dur_ms":"%DURATION%","request_id":"%REQ(X-REQUEST-ID)%","tenant":"%REQ(X-TENANT)%","trace_id":"%REQ(TRACEPARENT)%","peer":"%DOWNSTREAM_PEER_URI_SAN%","upstream":"%UPSTREAM_HOST%","tls":"%DOWNSTREAM_TLS_VERSION%"}'
+    defaultConfig:
+      holdApplicationUntilProxyStarts: true
+      tracing:
+        sampling: 10
+      proxyMetadata:
+        ISTIO_META_DNS_CAPTURE: "true"
+    extensionProviders:
+      - name: otel
+        opentelemetry:
+          service: otel-collector.observability.svc.cluster.local
+          port: 4317
+    trustDomain: cluster.local
+  values:
+    global:
+      proxy:
+        privileged: false

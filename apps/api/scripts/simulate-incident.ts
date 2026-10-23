@@ -38,7 +38,7 @@ const show = (o: unknown) => console.log(JSON.stringify(o, null, 2).split('\n').
   show((await call('dev-viewer', 'GET', '/api/v1/exposures/summary')).totals);
 
   say('2. Rotate the leaked credential (zero-downtime: new key is health-checked BEFORE the old one is touched)');
-  const cred = db.credentials.list('org_acme')[0]; secrets.seed(cred.id);
+  const cred = (await db.credentials.list('org_acme'))[0]; secrets.seed(cred.id);
   const rot = await call('dev-analyst', 'POST', '/api/v1/secrets/rotate', { credentialId: cred.id });
   await queue.idle();
   show((await call('dev-viewer', 'GET', `/api/v1/executions/${rot.executionId}`)).steps.map((s: any) => `${s.name}: ${s.status}`));

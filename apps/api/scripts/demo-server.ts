@@ -50,14 +50,14 @@ const ORG = 'org_acme';
     { rule: 'generic-api-key', secret: 'YOUR_API_KEY_HERE', file: 'README.md', repo: 'payments' }] } });
 
   // History: one rotation already approved & completed, one rejected.
-  const creds = db.credentials.list(ORG); creds.forEach((c) => secrets.seed(c.id));
+  const creds = (await db.credentials.list(ORG)); creds.forEach((c) => secrets.seed(c.id));
   const done = await A('POST', '/api/v1/secrets/rotate', { credentialId: creds[1].id }); await q.idle();
-  const [h1] = db.approvals.list(ORG, (a) => a.executionId === done.executionId);
+  const [h1] = (await db.approvals.list(ORG, (a) => a.executionId === done.executionId));
   await call('dev-approver', 'POST', `/api/v1/approvals/${h1.id}/decision`, { decision: 'approved', comment: 'Servicio verificado con la nueva clave; revocar la anterior.' }); await q.idle();
 
   // Waiting for a human:
   await A('POST', '/api/v1/secrets/rotate', { credentialId: creds[0].id });
-  const sqli = db.findings.list(ORG).find((f) => f.ruleId === 'js/sql-injection' && f.status === 'open')!;
+  const sqli = (await db.findings.list(ORG)).find((f) => f.ruleId === 'js/sql-injection' && f.status === 'open')!;
   await A('POST', '/api/v1/remediations/simulate', { findingId: sqli.id, kind: 'waf', targetRef: 'payments-gateway', submitForApproval: true, params: { rule: { name: 'block-sqli-offenders', action: 'block', priority: 10, addresses: ['203.0.113.0/24', '198.51.100.17/32'] } } });
   await A('POST', '/api/v1/iam/audit-roles', { roleName: 'billing-batch-role', critical: true, submitForApproval: true, resources: ['arn:aws:s3:::acme-billing/*'],
     grantedActions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:PutBucketPolicy', 'iam:PassRole', 'sqs:*'],

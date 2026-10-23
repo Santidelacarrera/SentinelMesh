@@ -15,7 +15,7 @@ export function Identity() {
     if (!form.current?.reportValidity()) return; const d = new FormData(form.current); setBusy(true); setErr('');
     try {
       const events = lines(String(d.get('events'))).flatMap((l) => { const m = /^(.+?)\s*[x×]\s*(\d+)$/.exec(l); return m ? Array(Math.min(Number(m[2]), 5000)).fill(m[1]) : [l]; });
-      const r = await api.post<{ audit: IdentityAudit; plan?: Plan }>('/iam/audit-roles', { roleName: String(d.get('role')), critical: d.get('critical') === 'on', grantedActions: lines(String(d.get('granted'))), auditEvents: events, resources: lines(String(d.get('resources')) || '*'), submitForApproval: send });
+      const r = await api.post<{ audit: IdentityAudit; plan?: Plan }>('/iam/audit-roles', { roleName: String(d.get('role')), critical: d.get('critical') === 'on', grantedActions: lines(String(d.get('granted'))), auditEvents: events, resources: lines(String(d.get('resources')) || '*'), ...(String(d.get('replace')) ? { replacePolicyName: String(d.get('replace')) } : {}), submitForApproval: send });
       setRes(r); past.reload(); if (send) refreshAll(); toast(send && r.plan ? 'Recorte enviado a Decisiones.' : 'Análisis listo. No se ha cambiado ningún permiso.');
     } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   };
@@ -30,6 +30,7 @@ export function Identity() {
             <label className="field"><span>Permisos concedidos (uno por línea)</span><textarea name="granted" required rows={5} defaultValue={'s3:GetObject\ns3:PutObject\ns3:DeleteObject\niam:PassRole\nsqs:*'} /></label>
             <label className="field"><span>Eventos vistos en los logs (uno por línea; «s3:GetObject × 240» repite)</span><textarea name="events" rows={4} defaultValue={'s3:GetObject × 240\ns3:PutObject × 31'} /></label>
             <label className="field"><span>Recursos</span><input type="text" name="resources" defaultValue="*" /></label>
+            <label className="field"><span>Política inline actual a sustituir (opcional)</span><input type="text" name="replace" placeholder="p. ej. broad-access" pattern="[\w+=,.@\-]*" /></label>
             <label style={{ display: 'flex', gap: 8 }}><input type="checkbox" name="critical" /> Es un rol crítico</label>
             {err && <p role="alert" style={{ color: 'var(--risk)' }}>{err}</p>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="btn primary" disabled={busy}>Analizar</button>

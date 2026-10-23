@@ -1,3 +1,4 @@
+import type { DryRunPlan } from '../store/models';
 /** Ports to the outside world. Real adapters (AWS/Vault/K8s) implement these; simulated ones ship for demo/tests. */
 export interface ApprovalProof { approvalId: string; planId: string; planHash: string; decidedBy: string; decidedAt: string; signature: string }
 
@@ -17,9 +18,10 @@ export interface SecretProvider {
 export interface HealthChecker { check(service: string, credentialId: string, version: number): Promise<{ healthy: boolean; detail: string }> }
 
 export interface InfraAdapter {
-  applyWafRule(params: Record<string, unknown>, proof: ApprovalProof): Promise<{ ref: string }>;
-  applyIamPolicy(params: Record<string, unknown>, proof: ApprovalProof): Promise<{ ref: string }>;
-  isolateService(target: string, proof: ApprovalProof): Promise<{ ref: string }>;
+  /** `plan` is the approved plan being executed (adapters that apply a saved Terraform plan need it). */
+  applyWafRule(params: Record<string, unknown>, proof: ApprovalProof, plan?: DryRunPlan): Promise<{ ref: string }>;
+  applyIamPolicy(params: Record<string, unknown>, proof: ApprovalProof, plan?: DryRunPlan): Promise<{ ref: string }>;
+  isolateService(target: string, proof: ApprovalProof, plan?: DryRunPlan): Promise<{ ref: string }>;
 }
 
 export interface ForensicBundle { metrics: Record<string, unknown>; logs: string[]; containerState: Record<string, unknown> }

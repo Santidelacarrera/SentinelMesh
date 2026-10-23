@@ -32,7 +32,7 @@ export class ApiController {
   auditRoles(@Me() me: Principal, @Body() body: unknown) { return this.rem.auditRole(me, parse(IamAuditSchema, body)); }
 
   @Get('iam/audits') @MinRole('viewer')
-  iamAudits(@Me() me: Principal) { return this.db.identityAudits.list(me.orgId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)); }
+  async iamAudits(@Me() me: Principal) { return (await this.db.identityAudits.list(me.orgId)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)); }
 
   @Post('secrets/rotate') @MinRole('analyst') @HttpCode(202)
   rotate(@Me() me: Principal, @Body() body: unknown) { return this.rem.rotate(me, parse(RotateSchema, body)); }
@@ -47,11 +47,11 @@ export class ApiController {
   whoami(@Me() me: Principal) { return me; }
 
   @Get('findings') @MinRole('viewer')
-  findings(@Me() me: Principal, @Query() q: Record<string, string>) {
+  async findings(@Me() me: Principal, @Query() q: Record<string, string>) {
     const sev = q['severity']?.split(','), text = q['q']?.toLowerCase();
-    const all = this.db.findings.list(me.orgId, (f) =>
+    const all = (await this.db.findings.list(me.orgId, (f) =>
       (!sev || sev.includes(f.severity)) && (!q['kind'] || f.kind === q['kind']) && (!q['status'] || q['status'].split(',').includes(f.status)) && (!q['asset'] || f.assetName === q['asset'])
-      && (!text || `${f.title} ${f.ruleId} ${f.assetName ?? ''} ${f.location ?? ''}`.toLowerCase().includes(text)))
+      && (!text || `${f.title} ${f.ruleId} ${f.assetName ?? ''} ${f.location ?? ''}`.toLowerCase().includes(text))))
       .sort((a, b) => b.exposureScore - a.exposureScore || b.createdAt.localeCompare(a.createdAt));
     const limit = Math.min(Number(q['limit'] ?? 100) || 100, 500), offset = Math.max(Number(q['offset'] ?? 0) || 0, 0);
     return { total: all.length, items: all.slice(offset, offset + limit) };
@@ -64,23 +64,25 @@ export class ApiController {
   credentials(@Me() me: Principal) { return this.db.credentials.list(me.orgId); }
 
   @Get('executions') @MinRole('viewer')
-  executions(@Me() me: Principal) {
-    return this.db.executions.list(me.orgId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((e) => ({ ...e, context: { requestedBy: e.context['requestedBy'], credentialId: e.context['credentialId'], incidentId: e.context['incidentId'] } }));
+  async executions(@Me() me: Principal) {
+    return (await this.db.executions.list(me.orgId)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((e) => ({ ...e, context: { requestedBy: e.context['requestedBy'], credentialId: e.context['credentialId'], incidentId: e.context['incidentId'] } }));
   }
 
   @Get('incidents') @MinRole('viewer')
-  incidents(@Me() me: Principal) {
-    return this.db.incidents.list(me.orgId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((i) => ({ ...this.inc.getIncident(me.orgId, i.id), anomaly: this.db.anomalies.get(me.orgId, i.anomalyId) }));
+  async incidents(@Me() me: Principal) {
+    const list = (await this.db.incidents.list(me.orgId)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return Promise.all(list.map(async (i) => ({ ...(await this.inc.getIncident(me.orgId, i.id)), anomaly: await this.db.anomalies.get(me.orgId, i.anomalyId) })));
   }
 
   @Get('approvals') @MinRole('viewer')
-  inbox(@Me() me: Principal, @Query('status') status?: string) {
-    return this.approvals.list(me.orgId, status).sort((a, b) => b.requestedAt.localeCompare(a.requestedAt)).map((a) => {
-      const plan = this.db.plans.get(me.orgId, a.planId), ex = this.db.executions.get(me.orgId, a.executionId);
-      const finding = plan?.sourceFindingId ? this.db.findings.get(me.orgId, plan.sourceFindingId) : undefined;
+  async inbox(@Me() me: Principal, @Query('status') status?: string) {
+    const list = (await this.approvals.list(me.orgId, status)).sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+    return Promise.all(list.map(async (a) => {
+      const [plan, ex] = await Promise.all([this.db.plans.get(me.orgId, a.planId), this.db.executions.get(me.orgId, a.executionId)]);
+      const finding = plan?.sourceFindingId ? await this.db.findings.get(me.orgId, plan.sourceFindingId) : undefined;
       return { ...a, plan, finding: finding && { id: finding.id, title: finding.title, severity: finding.severity },
         execution: ex && { id: ex.id, workflowKey: ex.workflowKey, status: ex.status, requestedBy: ex.context['requestedBy'], incidentId: ex.incidentId, steps: ex.steps.map((s) => ({ name: s.name, action: s.action, status: s.status, destructive: s.destructive })) } };
-    });
+    }));
   }
 
   @Post('approvals/:id/decision') @MinRole('approver') @HttpCode(200)
@@ -90,7 +92,7 @@ export class ApiController {
 
   @Get('executions/:id') @MinRole('viewer')
   execution(@Me() me: Principal, @Param('id') id: string) {
-    const e = this.db.executions.get(me.orgId, id); if (!e) throw new NotFoundException(); return e;
+    return this.db.executions.get(me.orgId, id).then((e) => { if (!e) throw new NotFoundException(); return e; });
   }
 
   @Get('executions/:id/forensics') @MinRole('viewer')
@@ -100,5 +102,5 @@ export class ApiController {
   incident(@Me() me: Principal, @Param('id') id: string) { return this.inc.getIncident(me.orgId, id); }
 
   @Get('audit') @MinRole('viewer')
-  auditLog(@Me() me: Principal) { return { verify: this.audit.verify(me.orgId), entries: this.audit.list(me.orgId) }; }
+  async auditLog(@Me() me: Principal) { const [verify, entries] = await Promise.all([this.audit.verify(me.orgId), this.audit.list(me.orgId)]); return { verify, entries }; }
 }

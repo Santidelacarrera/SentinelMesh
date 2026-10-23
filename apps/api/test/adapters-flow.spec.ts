@@ -43,7 +43,7 @@ function downstream() {
     const http_ = request(app.getHttpServer()); const sp = mod.get<AwsSecretProvider>(PORTS.SECRETS); const db = mod.get(Db); const queue = mod.get<MemoryQueue>(JOB_QUEUE);
 
     await http_.post('/api/v1/scans/ingest').set('x-api-key', 'dev-analyst').send({ format: 'secrets', source: 'gl', report: { findings: [{ rule: 'aws', secret: 'AKIAIOSFODNN7EXAMPLE', file: 'a.js', repo: 'payments', verified: true }] } }).expect(201);
-    const cred = db.credentials.list('org_acme')[0];
+    const cred = (await db.credentials.list('org_acme'))[0];
     await sp.adopt(cred.id, 'old-secret'); svc.accepted.add('old-secret');
     // The deployed service trusts any 43-char generated secret (the new one) as well as the old one.
     svc.srv.removeAllListeners('request');
@@ -51,17 +51,17 @@ function downstream() {
 
     const rot = await http_.post('/api/v1/secrets/rotate').set('x-api-key', 'dev-analyst').send({ credentialId: cred.id }).expect(202);
     await queue.idle();
-    const ex = db.executions.get('org_acme', rot.body.executionId)!;
+    const ex = (await db.executions.get('org_acme', rot.body.executionId))!;
     expect(ex.steps.map((s) => s.status)).toEqual(['succeeded', 'succeeded', 'succeeded', 'awaiting_approval']);
     expect(await sp.getActive(cred.id)).toBe(2);
     expect(await sp.isValid(cred.id, 1)).toBe(true);                    // old key still valid while SecOps decides
     expect(svc.seen.length).toBe(1); expect(svc.seen[0]).not.toBe('old-secret'); // probe used the NEW secret
-    expect(JSON.stringify(db.executions.list('org_acme'))).not.toContain(svc.seen[0]); // and it never leaked into persisted state
+    expect(JSON.stringify((await db.executions.list('org_acme')))).not.toContain(svc.seen[0]); // and it never leaked into persisted state
 
-    const [a] = db.approvals.list('org_acme');
+    const [a] = (await db.approvals.list('org_acme'));
     await http_.post(`/api/v1/approvals/${a.id}/decision`).set('x-api-key', 'dev-approver').send({ decision: 'approved' }).expect(200);
     await queue.idle();
-    expect(db.executions.get('org_acme', rot.body.executionId)!.status).toBe('succeeded');
+    expect((await db.executions.get('org_acme', rot.body.executionId))!.status).toBe('succeeded');
     expect(await sp.isValid(cred.id, 1)).toBe(false);
     expect(await sp.isValid(cred.id, 2)).toBe(true);
     await app.close(); svc.srv.closeAllConnections(); svc.srv.close();
@@ -78,10 +78,10 @@ function downstream() {
     const app = mod.createNestApplication(); await app.init();
     const http_ = request(app.getHttpServer()); const sp = mod.get<AwsSecretProvider>(PORTS.SECRETS); const db = mod.get(Db); const queue = mod.get<MemoryQueue>(JOB_QUEUE);
     await http_.post('/api/v1/scans/ingest').set('x-api-key', 'dev-analyst').send({ format: 'secrets', source: 'gl', report: { findings: [{ rule: 'aws', secret: 'AKIAIOSFODNN7EXAMPLE', repo: 'payments', verified: true }] } });
-    const cred = db.credentials.list('org_acme')[0]; await sp.adopt(cred.id, 'old-secret');
+    const cred = (await db.credentials.list('org_acme'))[0]; await sp.adopt(cred.id, 'old-secret');
     const rot = await http_.post('/api/v1/secrets/rotate').set('x-api-key', 'dev-analyst').send({ credentialId: cred.id });
     await queue.idle();
-    const ex = db.executions.get('org_acme', rot.body.executionId)!;
+    const ex = (await db.executions.get('org_acme', rot.body.executionId))!;
     expect(ex.status).toBe('failed'); expect(ex.steps[2].error).toMatch(/rolled back/);
     expect(await sp.getActive(cred.id)).toBe(1); expect(await sp.isValid(cred.id, 1)).toBe(true); expect(await sp.isValid(cred.id, 2)).toBe(false);
     expect(await sp.getValue(cred.id, 1)).toBe('old-secret');
@@ -100,7 +100,7 @@ function downstream() {
     expect(sim.body.plan.terraform).toContain('203.0.113.0/24');
     await queue.idle();
     expect((await waf.send(new ListRuleGroupsCommand({ Scope: 'REGIONAL' }))).RuleGroups ?? []).toHaveLength(0);
-    const [a] = db.approvals.list('org_acme');
+    const [a] = (await db.approvals.list('org_acme'));
     await h.post(`/api/v1/approvals/${a.id}/decision`).set('x-api-key', 'dev-approver').send({ decision: 'approved' }).expect(200);
     await queue.idle();
     expect((await waf.send(new ListRuleGroupsCommand({ Scope: 'REGIONAL' }))).RuleGroups!.map((g) => g.Name)).toEqual(['block-sqli']);

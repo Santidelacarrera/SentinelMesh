@@ -22,4 +22,6 @@ export default tseslint.config(
   },
   { files: ['apps/web/**/*.{ts,tsx}'], languageOptions: { globals: { ...globals.browser } }, plugins: { 'react-hooks': reactHooks }, rules: { ...reactHooks.configs.recommended.rules } },
   { files: ['**/test/**', '**/*.test.*', '**/e2e/**', '**/scripts/**'], rules: { 'security/detect-non-literal-regexp': 'off', 'security/detect-unsafe-regex': 'off' } },
+  // Terraform workdirs are created by the runner itself (mkdtemp) and the mesh generator only touches repo-relative paths it was invoked on.
+  { files: ['apps/api/src/terraform/**', 'infra/mesh/**'], rules: { 'security/detect-non-literal-fs-filename': 'off' } },
 );

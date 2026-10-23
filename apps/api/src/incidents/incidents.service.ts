@@ -35,22 +35,22 @@ export class IncidentsService implements OnModuleInit {
     this.engine.register('collect_forensics', async (c) => {
       // Captured at the exact moment of the alert, BEFORE any containment, then frozen (write-once, hashed).
       const incidentId = String(c.input['incidentId']);
-      const inc = this.db.incidents.get(c.orgId, incidentId)!;
+      const inc = (await this.db.incidents.get(c.orgId, incidentId))!;
       const bundle = redact(await this.collector.collect(inc.target, c.input));
       const body = JSON.stringify({ incidentId, capturedAt: now(), ...bundle });
       const objectKey = `forensics/${c.orgId}/${incidentId}.json`;
       if (!(await this.storage.get(objectKey))) await this.storage.put(objectKey, body); // write-once: replays never overwrite evidence
       const stored = (await this.storage.get(objectKey))!.toString();
-      const existing = this.db.snapshots.list(c.orgId, (s) => s.incidentId === incidentId)[0];
-      const snap = existing ?? this.db.snapshots.put({ id: newId('snap'), orgId: c.orgId, incidentId, objectKey, sha256: sha256(stored), items: ['metrics', 'logs', 'containerState'], capturedAt: now() });
-      this.db.incidents.update(c.orgId, incidentId, { snapshotId: snap.id });
+      // one snapshot per incident, even if a retry/another replica runs this step again (evidence is never replaced)
+      const { row: snap } = await this.db.snapshots.createUnique({ id: newId('snap'), orgId: c.orgId, incidentId, objectKey, sha256: sha256(stored), items: ['metrics', 'logs', 'containerState'], capturedAt: now() }, { incidentId });
+      await this.db.incidents.update(c.orgId, incidentId, { snapshotId: snap.id });
       return { snapshotId: snap.id, sha256: snap.sha256 };
     });
     this.engine.register('summarize', async (c) => {
       const incidentId = String(c.input['incidentId']);
       const { evidence } = await this.loadEvidence(c.orgId, incidentId);
       const s = await this.analytics.summarize(evidence);
-      this.db.incidents.update(c.orgId, incidentId, { summary: s.summary });
+      await this.db.incidents.update(c.orgId, incidentId, { summary: s.summary });
       return { citations: s.citations.length };
     });
     this.engine.register('notify', async (c) => ({ notified: 'secops', incidentId: c.input['incidentId'] }));
@@ -58,21 +58,21 @@ export class IncidentsService implements OnModuleInit {
 
   async trigger(me: Principal, input: z.infer<typeof TriggerSchema>) {
     const perMin = (input.count * 60) / input.windowSec;
-    const anomaly = this.db.anomalies.put({ id: newId('ano'), orgId: me.orgId, kind: input.kind, source: input.source, target: input.target, count: input.count, windowSec: input.windowSec, createdAt: now() });
-    this.audit.append(me.orgId, me.userId, 'anomaly.received', { anomalyId: anomaly.id, kind: input.kind, source: input.source, target: input.target, perMin: Math.round(perMin) });
+    const anomaly = await this.db.anomalies.put({ id: newId('ano'), orgId: me.orgId, kind: input.kind, source: input.source, target: input.target, count: input.count, windowSec: input.windowSec, createdAt: now() });
+    await this.audit.append(me.orgId, me.userId, 'anomaly.received', { anomalyId: anomaly.id, kind: input.kind, source: input.source, target: input.target, perMin: Math.round(perMin) });
     if (perMin < THRESHOLD_PER_MIN[input.kind]) return { anomalyId: anomaly.id, incidentId: null, triggered: false, reason: `below threshold (${Math.round(perMin)}/min < ${THRESHOLD_PER_MIN[input.kind]}/min)` };
 
     const severity: Severity = perMin >= THRESHOLD_PER_MIN[input.kind] * 5 ? 'critical' : 'high';
-    const inc: SecurityIncident = this.db.incidents.put({ id: newId('inc'), orgId: me.orgId, anomalyId: anomaly.id, severity, target: input.target, status: 'open', createdAt: now() });
-    const plan = this.dryrun.simulate(me.orgId, { kind: 'isolation', targetRef: input.target, params: { reason: `${input.kind} from ${input.source}` } });
+    const inc: SecurityIncident = await this.db.incidents.put({ id: newId('inc'), orgId: me.orgId, anomalyId: anomaly.id, severity, target: input.target, status: 'open', createdAt: now() });
+    const plan = await this.dryrun.simulate(me.orgId, { kind: 'isolation', targetRef: input.target, params: { reason: `${input.kind} from ${input.source}` } });
     const ex = await this.engine.start(me.orgId, 'incident-response',
       { incidentId: inc.id, count: input.count, gatewayLogs: input.gatewayLogs, plans: { 'isolate-service': plan.id } }, me.userId, inc.id);
-    this.db.incidents.update(me.orgId, inc.id, { executionId: ex.id, status: 'awaiting_approval' });
+    await this.db.incidents.update(me.orgId, inc.id, { executionId: ex.id, status: 'awaiting_approval' });
     return { anomalyId: anomaly.id, incidentId: inc.id, triggered: true, executionId: ex.id, planId: plan.id, severity };
   }
 
   private async loadEvidence(orgId: string, incidentId: string) {
-    const snap = this.db.snapshots.list(orgId, (s) => s.incidentId === incidentId)[0];
+    const snap = (await this.db.snapshots.where(orgId, { incidentId }))[0];
     if (!snap) throw new NotFoundException('no forensic snapshot yet');
     const raw = await this.storage.get(snap.objectKey);
     if (!raw || sha256(raw.toString()) !== snap.sha256) throw new BadRequestException('forensic package failed integrity check');
@@ -87,16 +87,16 @@ export class IncidentsService implements OnModuleInit {
 
   /** GET /executions/{id}/forensics */
   async forensics(orgId: string, executionId: string) {
-    const ex = this.db.executions.get(orgId, executionId);
+    const ex = await this.db.executions.get(orgId, executionId);
     if (!ex?.incidentId) throw new NotFoundException('execution has no forensic package');
     const { snap, bundle } = await this.loadEvidence(orgId, ex.incidentId);
-    const inc = this.db.incidents.get(orgId, ex.incidentId)!;
+    const inc = (await this.db.incidents.get(orgId, ex.incidentId))!;
     return { incident: { id: inc.id, severity: inc.severity, target: inc.target, summary: inc.summary }, snapshot: { id: snap.id, sha256: snap.sha256, capturedAt: snap.capturedAt, integrity: 'verified' }, evidence: bundle };
   }
 
-  getIncident(orgId: string, id: string) {
-    const inc = this.db.incidents.get(orgId, id); if (!inc) throw new NotFoundException();
-    const ex = inc.executionId ? this.db.executions.get(orgId, inc.executionId) : undefined;
+  async getIncident(orgId: string, id: string) {
+    const inc = await this.db.incidents.get(orgId, id); if (!inc) throw new NotFoundException();
+    const ex = inc.executionId ? await this.db.executions.get(orgId, inc.executionId) : undefined;
     const status = ex?.status === 'succeeded' ? 'contained' : ex?.status === 'rejected' ? 'open' : inc.status;
     return { ...inc, status };
   }

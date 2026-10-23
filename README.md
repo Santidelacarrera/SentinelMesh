@@ -49,7 +49,8 @@ npm test -w apps/api
 |---|---|
 | `REDIS_URL` | cola BullMQ y bloqueo distribuido contra Redis |
 | `AWS_TEST_ENDPOINT` | adaptadores S3/Secrets Manager/WAFv2/IAM/EC2/KMS y flujos completos contra un emulador |
-| `TEST_DATABASE_URL` (+ `_ADMIN_URL`) | persistencia PostgreSQL y RLS |
+| `TEST_DATABASE_URL` (+ `_ADMIN_URL`) | repositorios PostgreSQL con dos réplicas, carreras y RLS |
+| `TF_TEST_BIN` (+ `AWS_TEST_ENDPOINT`) | `terraform plan/apply` real contra el emulador |
 | `ANALYTICS_TEST_URL` | contrato: el servicio Python y el fallback local dan respuestas idénticas |
 | *(Playwright)* `npm run e2e -w apps/web` | consola en un navegador real contra la API demo |
 
@@ -106,6 +107,9 @@ Detalle de cada uno:
 Producción: `INFRA_MODE=aws`, OIDC (`OIDC_ISSUER`…), firma KMS/Ed25519 y Postgres; ver [`docs/architecture.md`](docs/architecture.md).
 
 Qué está simulado y qué falta para producción: ver la última sección de [`docs/architecture.md`](docs/architecture.md).
+
+## Malla de servicios (mTLS, circuit breakers, trazabilidad)
+Configuración de red para el ecosistema «Segundo Cerebro»: [`docs/mesh.md`](docs/mesh.md). Catálogo único `infra/mesh/services.yaml` → `npm run mesh:gen` → `infra/mesh/generated/` (Istio + NetworkPolicy); `infra/mesh/validate.sh` la valida sin clúster.
 
 ## La consola
 - **Resumen**: una frase que dice dónde estás (hallazgos, credenciales expuestas, firmas pendientes) y un mapa que sitúa cada activo según esté expuesto a Internet y protegido por gateway; es lo que explica su puntuación.

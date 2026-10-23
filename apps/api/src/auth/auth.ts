@@ -70,6 +70,10 @@ export class RolesGuard implements CanActivate {
     if (!p) throw new UnauthorizedException('invalid or missing credentials');
     const min = this.reflector.getAllAndOverride<SecOpsRole>('minRole', [ctx.getHandler(), ctx.getClass()]) ?? 'viewer';
     if (RANK[p.role] < RANK[min]) throw new ForbiddenException(`requires role ${min}`);
+    // Behind the mesh the gateway sets X-Tenant from the verified JWT. If it is present (or required) it must agree with who the credential says we are.
+    const tenant = req.headers['x-tenant'];
+    if (process.env.MESH_ENFORCE_TENANT === '1' && !tenant) throw new ForbiddenException('missing x-tenant (requests must come through the mesh gateway)');
+    if (tenant && tenant !== p.orgId) throw new ForbiddenException('x-tenant does not match the authenticated organisation');
     req.principal = p;
     return true;
   }

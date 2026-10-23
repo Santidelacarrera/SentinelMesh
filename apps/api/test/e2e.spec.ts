@@ -17,7 +17,7 @@ describe('auth & tenancy', () => {
   });
   it('isolates organisations', async () => {
     const r = await t.analyst.post('/api/v1/scans/ingest', { format: 'sarif', source: 'ci', report: sarif([res('js/sql-injection', 'api/x.js')]) }).expect(201);
-    const f = t.db.findings.list(ORG)[0];
+    const f = (await t.db.findings.list(ORG))[0];
     await t.other.get(`/api/v1/findings/${f.id}/trace`).expect(404);
     const s = await t.other.get('/api/v1/exposures/summary').expect(200);
     expect(s.body.totals.open).toBe(0);
@@ -52,14 +52,14 @@ describe('ingest & false-positive suppression', () => {
       { rule: 'generic-api-key', secret: 'YOUR_API_KEY_HERE', file: 'README.md', repo: 'payments' },
     ] } }).expect(201);
     expect(r.body).toMatchObject({ created: 1, suppressed: 1 });
-    const dump = JSON.stringify([t.db.findings.list(ORG), t.db.credentials.list(ORG), t.audit.list(ORG), (await t.storage.get(r.body.reportRef))!.toString()]);
+    const dump = JSON.stringify([(await t.db.findings.list(ORG)), (await t.db.credentials.list(ORG)), (await t.audit.list(ORG)), (await t.storage.get(r.body.reportRef))!.toString()]);
     expect(dump).not.toContain(AWS);
     expect(dump).toContain('AKIA****LE');
   });
   it('traces a finding from report to simulated plan', async () => {
     await t.analyst.post('/api/v1/scans/ingest', { format: 'sarif', source: 'ci', report: sarif([res('js/sql-injection', 'api/x.js')]) });
-    const f = t.db.findings.list(ORG)[0];
-    const sim = await t.analyst.post('/api/v1/remediations/simulate', { findingId: f.id, kind: 'waf', targetRef: 'api-gateway', params: { rule: { name: 'block-sqli', action: 'block', match: 'regex:union select' } } }).expect(201);
+    const f = (await t.db.findings.list(ORG))[0];
+    const sim = await t.analyst.post('/api/v1/remediations/simulate', { findingId: f.id, kind: 'waf', targetRef: 'api-gateway', params: { rule: { name: 'block-sqli', action: 'block', addresses: ['203.0.113.0/24'] } } }).expect(201);
     const tr = (await t.viewer.get(`/api/v1/findings/${f.id}/trace`).expect(200)).body;
     expect(tr.scan.reportRef).toMatch(/^reports\//);
     expect(tr.plans[0].id).toBe(sim.body.plan.id);
@@ -69,7 +69,7 @@ describe('ingest & false-positive suppression', () => {
 
 async function seedCredential() {
   const r = await t.analyst.post('/api/v1/scans/ingest', { format: 'secrets', source: 'gl', report: { findings: [{ rule: 'aws', secret: AWS, file: 'a.js', repo: 'payments', verified: true }] } });
-  const cred = t.db.credentials.list(ORG)[0];
+  const cred = (await t.db.credentials.list(ORG))[0];
   t.secrets.seed(cred.id);
   return { cred, r };
 }
@@ -109,14 +109,14 @@ describe('zero-downtime rotation', () => {
     expect(ex.steps[3].status).toBe('skipped');
     expect(await t.secrets.getActive(cred.id)).toBe(1);
     expect(await t.secrets.isValid(cred.id, 1)).toBe(true);
-    expect(t.db.approvals.list(ORG)).toHaveLength(0); // never even asked to revoke
+    expect((await t.db.approvals.list(ORG))).toHaveLength(0); // never even asked to revoke
   });
 
   it('rejection leaves the old credential untouched', async () => {
     const { cred } = await seedCredential();
     const rot = await t.analyst.post('/api/v1/secrets/rotate', { credentialId: cred.id }).expect(202);
     await settle();
-    const [a] = t.db.approvals.list(ORG);
+    const [a] = (await t.db.approvals.list(ORG));
     await t.approver.post(`/api/v1/approvals/${a.id}/decision`, { decision: 'rejected' }).expect(200);
     await settle();
     expect((await t.viewer.get(`/api/v1/executions/${rot.body.executionId}`)).body.status).toBe('rejected');
@@ -134,7 +134,7 @@ describe('engine resilience', () => {
     await settle();
     expect(crashed).toBe(true);
     expect([...t.secrets.versions.get(cred.id)!.keys()]).toEqual([1, 2]); // exactly one new version
-    const ex = t.db.executions.get(ORG, rot.body.executionId)!;
+    const ex = (await t.db.executions.get(ORG, rot.body.executionId))!;
     expect(ex.status).toBe('awaiting_approval');
     expect(ex.steps[1].status).toBe('succeeded');
     expect(await t.secrets.getActive(cred.id)).toBe(2);
@@ -147,20 +147,20 @@ describe('engine resilience', () => {
     await t.engine.advance(ORG, rot.body.executionId); // replay
     await t.engine.advance(ORG, rot.body.executionId);
     expect([...t.secrets.versions.get(cred.id)!.keys()]).toEqual([1, 2]);
-    expect(t.db.approvals.list(ORG)).toHaveLength(1);
+    expect((await t.db.approvals.list(ORG))).toHaveLength(1);
   });
 
   it('two workers racing on one execution never double-apply (execution lock)', async () => {
     const { cred } = await seedCredential();
     const rot = await t.analyst.post('/api/v1/secrets/rotate', { credentialId: cred.id }).expect(202);
     await settle();
-    const [a] = t.db.approvals.list(ORG);
+    const [a] = (await t.db.approvals.list(ORG));
     await t.approver.post(`/api/v1/approvals/${a.id}/decision`, { decision: 'approved' }).expect(200);
     const results = await Promise.allSettled([t.engine.advance(ORG, rot.body.executionId), t.engine.advance(ORG, rot.body.executionId), t.engine.advance(ORG, rot.body.executionId)]);
     await settle();
     expect(results.some((r) => r.status === 'rejected' && /another worker/.test(String((r as any).reason)))).toBe(true);
     expect(t.secrets.calls.filter((c) => c.startsWith('revoke'))).toEqual(['revoke:1']);
-    expect(t.db.executions.get(ORG, rot.body.executionId)!.status).toBe('succeeded');
+    expect((await t.db.executions.get(ORG, rot.body.executionId))!.status).toBe('succeeded');
   });
 
   it('gives up after bounded retries and marks the execution failed', async () => {
@@ -172,7 +172,7 @@ describe('engine resilience', () => {
     await t.engine.advance(ORG, rot.body.executionId).catch(() => {});
     await t.engine.advance(ORG, rot.body.executionId).catch(() => {});
     await t.engine.advance(ORG, rot.body.executionId).catch(() => {});
-    const ex = t.db.executions.get(ORG, rot.body.executionId)!;
+    const ex = (await t.db.executions.get(ORG, rot.body.executionId))!;
     expect(ex.status).toBe('failed');
     expect(await t.secrets.getActive(cred.id)).toBe(1);
   });
@@ -182,7 +182,7 @@ describe('dry-run simulation & approval gate', () => {
   const iam = { roleName: 'billing-role', critical: true, grantedActions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 'iam:*'], auditEvents: ['s3:GetObject', 's3:GetObject'], resources: ['arn:aws:s3:::billing/*'] };
 
   it('simulation has zero effect on infrastructure', async () => {
-    const r = await t.analyst.post('/api/v1/remediations/simulate', { kind: 'waf', targetRef: 'gw', params: { rule: { name: 'x' } } }).expect(201);
+    const r = await t.analyst.post('/api/v1/remediations/simulate', { kind: 'waf', targetRef: 'gw', params: { rule: { name: 'x', addresses: ['203.0.113.9/32'] } } }).expect(201);
     await t.analyst.post('/api/v1/iam/audit-roles', { ...iam, submitForApproval: false }).expect(201);
     await settle();
     expect(t.infra.applied).toEqual([]);
@@ -195,14 +195,14 @@ describe('dry-run simulation & approval gate', () => {
     expect(r.body.plan.diff).toContain('- iam:*');
     await settle();
     expect(t.infra.applied).toEqual([]);
-    expect(t.db.executions.get(ORG, r.body.executionId)!.status).toBe('awaiting_approval');
-    const [a] = t.db.approvals.list(ORG);
+    expect((await t.db.executions.get(ORG, r.body.executionId))!.status).toBe('awaiting_approval');
+    const [a] = (await t.db.approvals.list(ORG));
     expect(a.planHash).toBe(r.body.plan.planHash);
     await t.approver.post(`/api/v1/approvals/${a.id}/decision`, { decision: 'approved' }).expect(200);
     await settle();
     expect(t.infra.applied).toHaveLength(1);
-    expect(t.db.plans.get(ORG, r.body.plan.id)!.applied).toBe(true);
-    const signed = t.db.approvals.get(ORG, a.id)!;
+    expect((await t.db.plans.get(ORG, r.body.plan.id))!.applied).toBe(true);
+    const signed = (await t.db.approvals.get(ORG, a.id))!;
     expect(signed.signature).toMatch(/^[0-9a-f]{64}$/);
   });
 
@@ -210,7 +210,7 @@ describe('dry-run simulation & approval gate', () => {
     const admin = t.as('admin-key');
     const r = await admin.post('/api/v1/iam/audit-roles', { ...iam, submitForApproval: true }).expect(201);
     await settle();
-    const [a] = t.db.approvals.list(ORG);
+    const [a] = (await t.db.approvals.list(ORG));
     await admin.post(`/api/v1/approvals/${a.id}/decision`, { decision: 'approved' }).expect(403);
     expect(t.infra.applied).toEqual([]);
     expect(r.body.executionId).toBeTruthy();
@@ -219,22 +219,22 @@ describe('dry-run simulation & approval gate', () => {
   it('refuses to execute a plan tampered with after approval was requested', async () => {
     const r = await t.analyst.post('/api/v1/iam/audit-roles', { ...iam, submitForApproval: true }).expect(201);
     await settle();
-    const [a] = t.db.approvals.list(ORG);
-    t.db.plans.update(ORG, r.body.plan.id, (p) => { p.params = { ...p.params, evil: true }; });
+    const [a] = (await t.db.approvals.list(ORG));
+    (await t.db.plans.update(ORG, r.body.plan.id, (p) => { p.params = { ...p.params, evil: true }; }));
     await t.approver.post(`/api/v1/approvals/${a.id}/decision`, { decision: 'approved' }).expect(200);
     await settle();
     expect(t.infra.applied).toEqual([]);
-    expect(t.db.executions.get(ORG, r.body.executionId)!.status).toBe('failed');
+    expect((await t.db.executions.get(ORG, r.body.executionId))!.status).toBe('failed');
   });
 
   it('forged approvals cannot unlock adapters', async () => {
     const r = await t.analyst.post('/api/v1/iam/audit-roles', { ...iam, submitForApproval: true }).expect(201);
     await settle();
-    const [a] = t.db.approvals.list(ORG);
-    t.db.approvals.update(ORG, a.id, { status: 'approved', decidedBy: 'u_attacker', decidedAt: new Date().toISOString(), signature: 'f'.repeat(64) });
+    const [a] = (await t.db.approvals.list(ORG));
+    (await t.db.approvals.update(ORG, a.id, { status: 'approved', decidedBy: 'u_attacker', decidedAt: new Date().toISOString(), signature: 'f'.repeat(64) }));
     await t.engine.advance(ORG, r.body.executionId);
     expect(t.infra.applied).toEqual([]);
-    expect(t.db.executions.get(ORG, r.body.executionId)!.status).toBe('failed');
+    expect((await t.db.executions.get(ORG, r.body.executionId))!.status).toBe('failed');
     await expect(t.infra.isolateService('x', undefined as any)).rejects.toThrow(/approval proof/);
   });
 });
@@ -258,11 +258,11 @@ describe('incident response (SOAR)', () => {
     expect(JSON.stringify(f)).not.toContain('hunter2hunter2');
     expect(f.incident.summary).toMatch(/\[ev-log-1\]/);
 
-    const [a] = t.db.approvals.list(ORG);
+    const [a] = (await t.db.approvals.list(ORG));
     await t.approver.post(`/api/v1/approvals/${a.id}/decision`, { decision: 'approved' }).expect(200);
     await settle();
     expect(t.infra.applied).toEqual([{ op: 'isolate', arg: 'auth-api' }]);
-    const ex = t.db.executions.get(ORG, r.body.executionId)!;
+    const ex = (await t.db.executions.get(ORG, r.body.executionId))!;
     expect(ex.status).toBe('succeeded');
     expect((await t.viewer.get(`/api/v1/incidents/${r.body.incidentId}`)).body.status).toBe('contained');
   });
@@ -270,7 +270,7 @@ describe('incident response (SOAR)', () => {
   it('detects tampering of the frozen evidence', async () => {
     const r = await t.analyst.post('/api/v1/incidents/trigger', trig);
     await settle();
-    const snap = t.db.snapshots.list(ORG)[0];
+    const snap = (await t.db.snapshots.list(ORG))[0];
     await t.storage.put(snap.objectKey, '{"forged":true}');
     await t.viewer.get(`/api/v1/executions/${r.body.executionId}/forensics`).expect(400);
   });
@@ -293,12 +293,13 @@ describe('audit & workflow versions', () => {
   it('published workflows are versioned and destructive steps must be gated', async () => {
     const { WorkflowService } = await import('../src/workflow/workflow.service');
     const svc = t.app.get(WorkflowService);
-    const v1 = svc.resolve(ORG, 'waf-remediation');
-    expect(() => svc.publish(ORG, 'custom', [{ name: 's', action: 'isolate_service' }])).toThrow(/destructive/);
-    const v2 = svc.publish(ORG, 'waf-remediation', [{ name: 'apply-waf-rule', action: 'apply_waf_rule', destructive: true }]);
+    const v1 = await svc.resolve(ORG, 'waf-remediation');
+    await expect(svc.publish(ORG, 'custom', [{ name: 's', action: 'isolate_service' }])).rejects.toThrow(/destructive/);
+    const v2 = await svc.publish(ORG, 'waf-remediation', [{ name: 'apply-waf-rule', action: 'apply_waf_rule', destructive: true }]);
     expect(v2.version).toBe(v1.version + 1);
-    expect(Object.isFrozen(v2.steps)).toBe(true);
-    expect(t.db.workflows.get(ORG, v1.id)!.version).toBe(1);
+    const racers = await Promise.all([1, 2, 3].map(() => svc.publish(ORG, 'waf-remediation', [{ name: 'apply-waf-rule', action: 'apply_waf_rule', destructive: true }])));
+    expect(new Set(racers.map((w) => w.version)).size).toBe(3);            // concurrent publishers each get a distinct version
+    expect((await t.db.workflows.get(ORG, v1.id))!.version).toBe(1);
   });
 });
 

@@ -63,9 +63,13 @@ function WorkOrder({ a, onDone }: { a: Approval; onDone: () => void }) {
       <section><h3>Qué ocurrirá si firmas</h3>
         <div className="prose"><ul>{impact.effects.map((e, i) => <li key={i}>{e}</li>)}</ul><p style={{ marginTop: 8 }} className="muted">{impact.reversal}</p></div></section>
       <section><h3>Cambio exacto</h3>
-        <Tabs tabs={[['diff', 'Diferencias'], ['tf', 'Terraform'], ['params', 'Parámetros']]} value={tab} onChange={setTab} />
+        <Tabs tabs={[['diff', 'Diferencias'], ['tf', plan.tf?.text ? 'Terraform plan' : 'Terraform'], ['params', 'Parámetros']]} value={tab} onChange={setTab} />
         {tab === 'diff' && <DiffView diff={plan.diff} />}
-        {tab === 'tf' && (plan.terraform ? <pre className="diff" style={{ padding: 12, margin: 0, whiteSpace: 'pre-wrap' }}>{plan.terraform}</pre> : <p className="muted">Este cambio no genera Terraform.</p>)}
+        {tab === 'tf' && (plan.tf?.text
+          ? <><p className="muted" style={{ margin: '8px 0' }}>Salida real de <code>terraform plan</code>{plan.tf.summary && <> · <b>{plan.tf.summary.add}</b> a crear, <b>{plan.tf.summary.change}</b> a modificar, <b>{plan.tf.summary.destroy}</b> a destruir</>}. Al firmar se aplica exactamente este plan guardado.</p>
+              <pre className="diff" style={{ padding: 12, margin: 0, whiteSpace: 'pre-wrap' }}>{plan.tf.text}</pre>
+              <details style={{ marginTop: 8 }}><summary>HCL</summary><pre className="diff" style={{ padding: 12, margin: 0, whiteSpace: 'pre-wrap' }}>{plan.terraform}</pre></details></>
+          : plan.terraform ? <pre className="diff" style={{ padding: 12, margin: 0, whiteSpace: 'pre-wrap' }}>{plan.terraform}</pre> : <p className="muted">Este cambio no genera Terraform.</p>)}
         {tab === 'params' && <pre className="diff" style={{ padding: 12, margin: 0, whiteSpace: 'pre-wrap' }}>{JSON.stringify(plan.params, null, 2)}</pre>}
         <div className="hashbox"><span>Tu firma queda ligada a este plan:</span><Hash value={plan.planHash} n={16} /><span className="muted">Si el plan cambiara después, la ejecución se detiene.</span></div></section>
       {ex && <section><h3>Estado de la ejecución</h3>

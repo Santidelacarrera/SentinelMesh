@@ -1,0 +1,58 @@
+# GENERADO por infra/mesh/generate.mjs desde services.yaml — no editar a mano.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: segundo-cerebro
+  labels:
+    istio-injection: enabled
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: shadowapi-guard
+  namespace: segundo-cerebro
+  labels:
+    app: shadowapi-guard
+    app.kubernetes.io/part-of: segundo-cerebro
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: contextrag-engine
+  namespace: segundo-cerebro
+  labels:
+    app: contextrag-engine
+    app.kubernetes.io/part-of: segundo-cerebro
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sentinelmesh-api
+  namespace: segundo-cerebro
+  labels:
+    app: sentinelmesh-api
+    app.kubernetes.io/part-of: segundo-cerebro
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sentinelmesh-analytics
+  namespace: segundo-cerebro
+  labels:
+    app: sentinelmesh-analytics
+    app.kubernetes.io/part-of: segundo-cerebro
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sentinelmesh-web
+  namespace: segundo-cerebro
+  labels:
+    app: sentinelmesh-web
+    app.kubernetes.io/part-of: segundo-cerebro
+automountServiceAccountToken: false

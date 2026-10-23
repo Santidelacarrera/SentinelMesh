@@ -25,6 +25,15 @@ ALTER TABLE security_workflow ADD COLUMN IF NOT EXISTS version int GENERATED ALW
 CREATE UNIQUE INDEX IF NOT EXISTS workflow_version ON security_workflow (org_id, wf_key, version);
 ALTER TABLE dry_run_plan ADD COLUMN IF NOT EXISTS plan_hash text GENERATED ALWAYS AS (doc->>'planHash') STORED;
 
+-- Containment index for `doc @> {...}` lookups used by the repositories.
+DO $$ DECLARE t text; BEGIN
+  FOREACH t IN ARRAY ARRAY['vulnerability_scan','asset_context','finding','credential_record','identity_audit','access_policy','traffic_anomaly',
+    'security_incident','forensic_snapshot','security_workflow','dry_run_plan','workflow_execution','secops_approval'] LOOP
+    EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I USING gin (doc jsonb_path_ops)', t || '_doc_gin', t);
+    EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (org_id, updated_at DESC)', t || '_org_upd', t);
+  END LOOP;
+END $$;
+
 -- Append-only, hash-chained audit trail (columns kept typed: it is the compliance record).
 CREATE TABLE IF NOT EXISTS audit_trail (
   id text PRIMARY KEY, org_id text NOT NULL REFERENCES organization(id), seq bigint NOT NULL, at timestamptz NOT NULL, actor text NOT NULL,

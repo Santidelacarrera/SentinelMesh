@@ -29,25 +29,30 @@ export class WorkflowService {
   constructor(private db: Db, private audit: AuditTrail) {}
 
   /** Publishing creates a NEW immutable version; there is intentionally no update/delete. */
-  publish(orgId: string, key: string, steps: StepDef[], actor = 'system'): SecurityWorkflow {
+  async publish(orgId: string, key: string, steps: StepDef[], actor = 'system'): Promise<SecurityWorkflow> {
     for (const s of steps) {
       if (DESTRUCTIVE_ACTIONS.has(s.action) && !s.destructive) throw new BadRequestException(`step "${s.name}" uses destructive action ${s.action} and must be marked destructive (approval-gated)`);
     }
     if (new Set(steps.map((s) => s.name)).size !== steps.length) throw new BadRequestException('duplicate step names');
-    const prev = this.latest(orgId, key);
-    const frozen = Object.freeze(steps.map((s) => Object.freeze({ ...s })));
-    const wf: SecurityWorkflow = { id: newId('wf'), orgId, key, version: (prev?.version ?? 0) + 1, steps: frozen as StepDef[], contentHash: sha256(stableStringify(steps)), createdAt: now() };
-    this.db.workflows.put(wf);
-    this.audit.append(orgId, actor, 'workflow.published', { key, version: wf.version, contentHash: wf.contentHash });
-    return wf;
+    const frozen = steps.map((s) => ({ ...s }));
+    // Optimistic versioning: if another replica published the same version first, the unique (key, version) loses the race → retry with the next one.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const prev = await this.latest(orgId, key);
+      const wf: SecurityWorkflow = { id: newId('wf'), orgId, key, version: (prev?.version ?? 0) + 1, steps: frozen, contentHash: sha256(stableStringify(steps)), createdAt: now() };
+      const { row, created } = await this.db.workflows.createUnique(wf, { key, version: wf.version });
+      if (!created) continue;
+      await this.audit.append(orgId, actor, 'workflow.published', { key, version: row.version, contentHash: row.contentHash });
+      return row;
+    }
+    throw new BadRequestException('could not publish workflow: too much contention');
   }
 
-  latest(orgId: string, key: string) {
-    return this.db.workflows.list(orgId, (w) => w.key === key).sort((a, b) => b.version - a.version)[0];
+  async latest(orgId: string, key: string) {
+    return (await this.db.workflows.where(orgId, { key })).sort((a, b) => b.version - a.version)[0];
   }
 
-  resolve(orgId: string, key: string): SecurityWorkflow {
-    const wf = this.latest(orgId, key) ?? (DEFAULT_WORKFLOWS[key] ? this.publish(orgId, key, DEFAULT_WORKFLOWS[key]) : undefined);
+  async resolve(orgId: string, key: string): Promise<SecurityWorkflow> {
+    const wf = (await this.latest(orgId, key)) ?? (DEFAULT_WORKFLOWS[key] ? await this.publish(orgId, key, DEFAULT_WORKFLOWS[key]) : undefined);
     if (!wf) throw new NotFoundException(`unknown workflow ${key}`);
     return wf;
   }

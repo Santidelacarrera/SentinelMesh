@@ -1,6 +1,6 @@
 import { redact, redactString, maskSecret } from '../src/common/mask';
 import { assertSafeUrl, isPrivateIp } from '../src/common/ssrf';
-import { AuditTrail } from '../src/audit/audit-trail';
+import { AuditTrail, MemoryAuditStore } from '../src/audit/audit-trail';
 import { localCorrelate, localLeastPrivilege } from '../src/analytics/analytics.client';
 
 describe('secret masking', () => {
@@ -34,26 +34,35 @@ describe('SSRF defence', () => {
 });
 
 describe('audit trail', () => {
-  it('chains hashes, redacts payloads, and detects tampering', () => {
+  it('chains hashes, redacts payloads, and detects tampering', async () => {
     const a = new AuditTrail();
-    a.append('o', 'u', 'e1', { password: 'p4ssw0rd!' });
-    a.append('o', 'u', 'e2', { note: 'AKIAIOSFODNN7EXAMPLE' });
-    expect(JSON.stringify(a.list('o'))).not.toMatch(/p4ssw0rd|AKIAIOSFODNN7EXAMPLE/);
-    expect(a.verify('o').ok).toBe(true);
-    expect(() => { (a.list('o')[0] as any).event = 'tampered'; }).toThrow(); // frozen entries
-    (a as any).chains.get('o')[0] = { ...a.list('o')[0], event: 'tampered' };
-    expect(a.verify('o')).toEqual({ ok: false, brokenAt: 1 });
+    await a.append('o', 'u', 'e1', { password: 'p4ssw0rd!' });
+    await a.append('o', 'u', 'e2', { note: 'AKIAIOSFODNN7EXAMPLE' });
+    expect(JSON.stringify(await a.list('o'))).not.toMatch(/p4ssw0rd|AKIAIOSFODNN7EXAMPLE/);
+    expect((await a.verify('o')).ok).toBe(true);
+    a.memory._tamper('o', 0, { event: 'tampered' });
+    expect(await a.verify('o')).toEqual({ ok: false, brokenAt: 1 });
+  });
+  it('concurrent appends never fork the chain', async () => {
+    const a = new AuditTrail();
+    await Promise.all(Array.from({ length: 25 }, (_, i) => a.append('o', 'u', `e${i}`)));
+    const l = await a.list('o');
+    expect(l.map((e) => e.seq)).toEqual(Array.from({ length: 25 }, (_, i) => i + 1));
+    expect((await a.verify('o')).ok).toBe(true);
   });
 });
 
 describe('audit trail persistence round-trip', () => {
-  it('a chain written with undefined fields still verifies after a JSON/JSONB round-trip (regression)', () => {
+  it('a chain written with undefined fields still verifies after a JSON/JSONB round-trip (regression)', async () => {
     const a = new AuditTrail();
-    a.append('o', 'u1', 'approval.approved', { approvalId: 'x', comment: undefined, nested: { gone: undefined, kept: 1 } });
-    a.append('o', 'u1', 'step.succeeded', { output: { v: undefined } });
+    await a.append('o', 'u1', 'approval.approved', { approvalId: 'x', comment: undefined, nested: { gone: undefined, kept: 1 } });
+    await a.append('o', 'u1', 'step.succeeded', { output: { v: undefined } });
+    const roundTripped = JSON.parse(JSON.stringify(await a.list('o'))); // what a JSONB column hands back: undefined keys are gone
+    const store = new MemoryAuditStore();
+    for (const e of roundTripped) await store.append('o', () => e);
     const b = new AuditTrail();
-    b.hydrate(JSON.parse(JSON.stringify(a.list('o'))));        // what a JSONB column hands back: undefined keys are gone
-    expect(b.verify('o')).toEqual({ ok: true });
+    b.useStore(store);
+    expect(await b.verify('o')).toEqual({ ok: true });
   });
 });
 
@@ -79,7 +88,10 @@ describe('production guard', () => {
   it('refuses simulated ports in production', async () => {
     const { Test } = await import('@nestjs/testing'); const { AppModule } = await import('../src/app.module');
     const prev = { ...process.env }; process.env.NODE_ENV = 'production'; process.env.APPROVAL_SIGNING_KEY = 'k'; delete process.env.INFRA_MODE;
-    try { await expect(Test.createTestingModule({ imports: [AppModule] }).compile()).rejects.toThrow(/INFRA_MODE=aws/); }
+    try { await expect(Test.createTestingModule({ imports: [AppModule] }).compile()).rejects.toThrow(/INFRA_MODE=aws/);
+      const { productionProblems } = await import('../src/ports.config');
+      expect(productionProblems({ NODE_ENV: 'production', INFRA_MODE: 'aws', DATABASE_URL: 'x', REDIS_URL: 'x', OBJECT_STORE_BUCKET: 'b', TERRAFORM_ENABLED: '1' } as any)).toEqual([expect.stringContaining('TF_BACKEND_HCL')]);
+      expect(productionProblems({ NODE_ENV: 'development' } as any)).toEqual([]); }
     finally { process.env = prev; }
   });
 });

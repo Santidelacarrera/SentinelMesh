@@ -1,0 +1,335 @@
+# GENERADO por infra/mesh/generate.mjs desde services.yaml — no editar a mano.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: shadowapi-guard
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  host: shadowapi-guard.segundo-cerebro.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 1s
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 200
+        maxRequestsPerConnection: 0
+        maxRetries: 3
+        idleTimeout: 60s
+    outlierDetection:
+      consecutive5xxErrors: 5
+      consecutiveGatewayErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 30
+      splitExternalLocalOriginErrors: true
+      consecutiveLocalOriginFailures: 5
+    loadBalancer:
+      simple: LEAST_REQUEST
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: shadowapi-guard
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  hosts:
+    - shadowapi-guard.segundo-cerebro.svc.cluster.local
+  http:
+    - name: read
+      match:
+        - method:
+            regex: GET|HEAD
+      route:
+        - destination:
+            host: shadowapi-guard.segundo-cerebro.svc.cluster.local
+            port:
+              number: 8080
+      timeout: 8s
+      retries:
+        attempts: 2
+        retryOn: connect-failure,refused-stream,unavailable,reset
+    - name: write
+      match:
+        - method:
+            regex: POST|PUT|PATCH|DELETE
+      route:
+        - destination:
+            host: shadowapi-guard.segundo-cerebro.svc.cluster.local
+            port:
+              number: 8080
+      timeout: 8s
+      retries:
+        attempts: 0
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: contextrag-engine
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  host: contextrag-engine.segundo-cerebro.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 1s
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 64
+        maxRequestsPerConnection: 0
+        maxRetries: 3
+        idleTimeout: 60s
+    outlierDetection:
+      consecutive5xxErrors: 3
+      consecutiveGatewayErrors: 3
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 30
+      splitExternalLocalOriginErrors: true
+      consecutiveLocalOriginFailures: 3
+    loadBalancer:
+      simple: LEAST_REQUEST
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: contextrag-engine
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  hosts:
+    - contextrag-engine.segundo-cerebro.svc.cluster.local
+  http:
+    - name: query
+      match:
+        - method:
+            regex: POST
+          uri:
+            exact: /v1/query
+        - method:
+            regex: POST
+          uri:
+            exact: /v1/embed
+      route:
+        - destination:
+            host: contextrag-engine.segundo-cerebro.svc.cluster.local
+            port:
+              number: 8080
+      timeout: 5s
+      retries:
+        attempts: 2
+        retryOn: connect-failure,refused-stream,unavailable,reset
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: sentinelmesh-api
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  host: sentinelmesh-api.segundo-cerebro.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 1s
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 200
+        maxRequestsPerConnection: 0
+        maxRetries: 3
+        idleTimeout: 60s
+    outlierDetection:
+      consecutive5xxErrors: 5
+      consecutiveGatewayErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 30
+      splitExternalLocalOriginErrors: true
+      consecutiveLocalOriginFailures: 5
+    loadBalancer:
+      simple: LEAST_REQUEST
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: sentinelmesh-api
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  hosts:
+    - sentinelmesh-api.segundo-cerebro.svc.cluster.local
+  http:
+    - name: read
+      match:
+        - method:
+            regex: GET|HEAD
+      route:
+        - destination:
+            host: sentinelmesh-api.segundo-cerebro.svc.cluster.local
+            port:
+              number: 3000
+      timeout: 6s
+      retries:
+        attempts: 2
+        retryOn: connect-failure,refused-stream,unavailable,reset
+    - name: write
+      match:
+        - method:
+            regex: POST|PUT|PATCH|DELETE
+      route:
+        - destination:
+            host: sentinelmesh-api.segundo-cerebro.svc.cluster.local
+            port:
+              number: 3000
+      timeout: 6s
+      retries:
+        attempts: 0
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: sentinelmesh-analytics
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  host: sentinelmesh-analytics.segundo-cerebro.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 1s
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 200
+        maxRequestsPerConnection: 0
+        maxRetries: 3
+        idleTimeout: 60s
+    outlierDetection:
+      consecutive5xxErrors: 5
+      consecutiveGatewayErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 30
+      splitExternalLocalOriginErrors: true
+      consecutiveLocalOriginFailures: 5
+    loadBalancer:
+      simple: LEAST_REQUEST
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: sentinelmesh-analytics
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  hosts:
+    - sentinelmesh-analytics.segundo-cerebro.svc.cluster.local
+  http:
+    - name: all
+      match:
+        - method:
+            regex: GET|POST
+      route:
+        - destination:
+            host: sentinelmesh-analytics.segundo-cerebro.svc.cluster.local
+            port:
+              number: 8000
+      timeout: 2s
+      retries:
+        attempts: 2
+        retryOn: connect-failure,refused-stream,unavailable,reset
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: sentinelmesh-web
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  host: sentinelmesh-web.segundo-cerebro.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 1s
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 200
+        maxRequestsPerConnection: 0
+        maxRetries: 3
+        idleTimeout: 60s
+    outlierDetection:
+      consecutive5xxErrors: 5
+      consecutiveGatewayErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 30
+      splitExternalLocalOriginErrors: true
+      consecutiveLocalOriginFailures: 5
+    loadBalancer:
+      simple: LEAST_REQUEST
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: sentinelmesh-web
+  namespace: segundo-cerebro
+  labels:
+    app.kubernetes.io/part-of: segundo-cerebro
+    app.kubernetes.io/managed-by: mesh-generator
+spec:
+  hosts:
+    - sentinelmesh-web.segundo-cerebro.svc.cluster.local
+  http:
+    - name: static
+      match:
+        - method:
+            regex: GET|HEAD
+      route:
+        - destination:
+            host: sentinelmesh-web.segundo-cerebro.svc.cluster.local
+            port:
+              number: 80
+      timeout: 3s
+      retries:
+        attempts: 2
+        retryOn: connect-failure,refused-stream,unavailable,reset
