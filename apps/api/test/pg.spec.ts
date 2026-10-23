@@ -1,7 +1,5 @@
 import { Pool } from 'pg';
 import { boot, ORG } from './helpers';
-import { Db } from '../src/store/db';
-import { AuditTrail } from '../src/audit/audit-trail';
 import { PgPersistence } from '../src/store/pg';
 
 const url = process.env.TEST_DATABASE_URL; // role must be NOSUPERUSER NOBYPASSRLS

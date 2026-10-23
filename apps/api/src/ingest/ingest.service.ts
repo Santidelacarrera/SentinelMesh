@@ -59,7 +59,7 @@ export class IngestService {
         maskedSecret: raw.maskedSecret, credentialId, remediationPlanIds: [], createdAt: now(),
       };
       this.db.findings.put(f);
-      c.suppressed ? result.suppressed++ : result.created++;
+      if (c.suppressed) result.suppressed++; else result.created++;
     }
     scan.findingCount = result.created + result.suppressed;
     this.db.scans.put(scan);

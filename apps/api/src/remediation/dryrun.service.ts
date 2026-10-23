@@ -23,7 +23,8 @@ export class DryRunService {
 
   simulate(orgId: string, i: SimulateInput): DryRunPlan {
     const params = redact(i.params);
-    let diff: string, terraform: string, destructive = true;
+    let diff: string, terraform: string;
+    const destructive = true;
     switch (i.kind) {
       case 'waf': ({ diff, terraform } = this.waf(i.targetRef, params)); break;
       case 'iam': ({ diff, terraform } = this.iam(i.targetRef, params)); break;
@@ -64,7 +65,7 @@ export class DryRunService {
     };
   }
 
-  private rotation(cred: string, p: Record<string, unknown>) {
+  private rotation(cred: string, _p: Record<string, unknown>) {
     return {
       diff: [`--- credential/${cred}`, `+++ credential/${cred}`, `  new version created, secret store repointed, health-checked (done before approval)`, `- revoke the previous credential version (REQUIRES APPROVAL)`].join('\n'),
       terraform: `# No Terraform change: rotation is performed through the secret provider API.`,

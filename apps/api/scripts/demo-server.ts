@@ -11,6 +11,8 @@ import { PORTS } from '../src/workflow/ports';
 import { SimulatedSecrets } from '../src/workflow/simulated';
 import { Db } from '../src/store/db';
 
+// These scripts are self-contained, in-memory demos: ignore any Redis/Postgres/S3/AWS settings left in the shell.
+for (const k of ['REDIS_URL', 'DATABASE_URL', 'OBJECT_STORE_BUCKET', 'OBJECT_STORE_DIR', 'INFRA_MODE', 'ANALYTICS_URL', 'OIDC_ISSUER', 'MESH_ENFORCE_TENANT']) delete process.env[k];
 process.env.HEALTH_RETRY_MS = '0';
 const ORG = 'org_acme';
 

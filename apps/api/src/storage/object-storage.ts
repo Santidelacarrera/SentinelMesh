@@ -21,6 +21,9 @@ export class FsObjectStorage implements ObjectStorage {
     if (!p.startsWith(resolve(this.root) + sep)) throw new Error('invalid key');
     return p;
   }
+  // Paths below come from this.path(), which resolves the key under `root` and rejects any escape (../, absolute paths).
+  /* eslint-disable security/detect-non-literal-fs-filename */
   async put(k: string, b: Buffer | string) { const p = this.path(k); await mkdir(dirname(p), { recursive: true }); await writeFile(p, b); }
   async get(k: string) { try { return await readFile(this.path(k)); } catch { return undefined; } }
+  /* eslint-enable security/detect-non-literal-fs-filename */
 }
