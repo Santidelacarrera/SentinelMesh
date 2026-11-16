@@ -108,4 +108,6 @@ export class PgBackend implements OnModuleInit, OnApplicationShutdown {
     this.log.log('PostgreSQL repositories active (stateless API)');
   }
   async onApplicationShutdown() { await this.pool?.end(); }
+  /** Readiness probe: throws if the database cannot answer. */
+  async ping() { if (this.pool) await this.pool.query('SELECT 1'); }
 }

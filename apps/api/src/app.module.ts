@@ -1,7 +1,14 @@
 import { Controller, Get, MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { RowNotFoundFilter } from './common/not-found.filter';
-import { RateLimit, SecurityHeaders } from './http-hardening';
+import { AuthRateLimit, RateLimit, SecurityHeaders } from './http-hardening';
+import { Metrics, MetricsMiddleware, OpsController } from './ops/metrics';
+import { OpsService } from './ops/ops.service';
+import { DashboardService } from './dashboard/dashboard.service';
+import { ReportsService } from './reports/reports.service';
+import { PlatformController } from './reports/platform.controller';
+import { AiService } from './ai/ai.service';
+import { PrivacyService } from './privacy/privacy.service';
 import { CorrelationMiddleware } from './common/correlation';
 import { ApiController } from './api.controllers';
 import { Db } from './store/db';
@@ -50,11 +57,11 @@ class HealthController {
 }
 
 @Module({
-  controllers: [ApiController, AuthController, CtemController, IamController, ConnectorsController, CasesController, SoarController, NotificationsController, HealthController],
+  controllers: [ApiController, AuthController, CtemController, IamController, ConnectorsController, CasesController, SoarController, NotificationsController, OpsController, PlatformController, HealthController],
   providers: [
     Db, PgBackend, AuditTrail, AuthService, RolesGuard, AccountsService, Entitlements,
     { provide: APP_FILTER, useClass: RowNotFoundFilter },
-    EventBus, CtemService, IamService, SignalsService, ConnectorsService, CasesService, EvidenceService, CorrelationService, NotificationsService, PlaybooksService, LabExecutor,
+    Metrics, OpsService, DashboardService, ReportsService, AiService, PrivacyService, EventBus, CtemService, IamService, SignalsService, ConnectorsService, CasesService, EvidenceService, CorrelationService, NotificationsService, PlaybooksService, LabExecutor,
     { provide: MAILER, useFactory: () => new SmtpMailer() }, { provide: SOAR_EXECUTOR, useExisting: LabExecutor }, { provide: DNS_RESOLVER, useValue: defaultDns }, { provide: TLS_PROBE, useValue: defaultTlsProbe },
     { provide: SECRET_BOX, useFactory: () => SecretBox.fromEnv() }, ApprovalSigner, ApprovalsService, DryRunService, RemediationService, IncidentsService,
     IngestService, WorkflowService, WorkflowEngine, CoreHandlers,
@@ -66,5 +73,5 @@ class HealthController {
   ],
 })
 export class AppModule implements NestModule {
-  configure(c: MiddlewareConsumer) { c.apply(CorrelationMiddleware, SecurityHeaders, RateLimit).forRoutes('*'); }
+  configure(c: MiddlewareConsumer) { c.apply(CorrelationMiddleware, SecurityHeaders, MetricsMiddleware, RateLimit).forRoutes('*'); c.apply(AuthRateLimit).forRoutes('api/v1/auth/*path'); }
 }

@@ -13,6 +13,7 @@ import { newId, now, sha256, stableStringify } from '../common/ids';
 import { redactString } from '../common/mask';
 import { Principal } from '../auth/auth';
 import { IamService } from '../iam/iam.service';
+import { Metrics } from '../ops/metrics';
 
 export const SAFE_ACTIONS: ReadonlySet<PlaybookActionType> = new Set(['notify', 'create_case', 'create_ticket', 'tag']);
 /** What each risky action does if it ever runs for real, and how dangerous that is. Drives the playbook's effective risk level. */
@@ -75,7 +76,7 @@ export class LabExecutor implements SoarExecutor {
 @Injectable()
 export class PlaybooksService implements OnModuleInit {
   constructor(private db: Db, private audit: AuditTrail, private approvals: ApprovalsService, private signer: ApprovalSigner, private notify: NotificationsService, private cases: CasesService, private bus: EventBus,
-    private iam: IamService, @Inject(SOAR_EXECUTOR) private executor: SoarExecutor) {}
+    private iam: IamService, @Inject(SOAR_EXECUTOR) private executor: SoarExecutor, private metrics: Metrics) {}
 
   onModuleInit() {
     this.bus.subscribe((e) => this.handle(e));
@@ -213,6 +214,7 @@ export class PlaybooksService implements OnModuleInit {
       steps, status: 'executing', createdAt: t, updatedAt: t, history: [{ at: t, text: `triggered by ${type} ${refId}; mode ${mode}${mode !== pb.mode ? ` (playbook asks for ${pb.mode}${a.killSwitch ? ', kill switch engaged' : ''})` : ''}` }] };
     const { row, created } = await this.db.runs.createUnique(run, { dedupKey: run.dedupKey });
     if (!created) return row;                                               // idempotent: the same entity never fires the same playbook twice
+    this.metrics.inc('sentinel_playbook_runs_total', { mode }, 1, 'playbook runs by effective mode');
     await this.audit.append(orgId, requestedBy, 'playbook.run_started', { runId, playbook: pb.key, version: pb.version, mode, trigger: { type, refId } });
     await this.advance(orgId, runId, pb, entity);
     return row;

@@ -8,6 +8,7 @@ import { DUMMY_HASH, SecretBox, hashPassword, newTotpSecret, passwordProblems, r
 import { Principal, encodeOrg } from './auth';
 import { isRole, PLATFORM_ORG, ALL_PERMISSIONS } from './rbac';
 import { Entitlements } from '../platform/entitlements';
+import { Metrics } from '../ops/metrics';
 
 export const SECRET_BOX = Symbol('SECRET_BOX');
 
@@ -27,7 +28,7 @@ const view = (u: UserAccount) => ({ id: u.id, email: u.email, role: u.role, cust
 
 @Injectable()
 export class AccountsService implements OnModuleInit {
-  constructor(private db: Db, private audit: AuditTrail, @Inject(SECRET_BOX) private box: SecretBox, private ent: Entitlements) {}
+  constructor(private db: Db, private audit: AuditTrail, @Inject(SECRET_BOX) private box: SecretBox, private ent: Entitlements, private metrics: Metrics) {}
 
   /** Bootstraps the first platform administrator from the environment (secret from env, never logged). */
   async onModuleInit() {
@@ -78,7 +79,7 @@ export class AccountsService implements OnModuleInit {
   // ───────── login / sessions ─────────
   async login(i: z.infer<typeof LoginSchema>, ctx: { ip?: string; userAgent?: string }): Promise<Tokens> {
     const orgId = i.org, email = i.email.toLowerCase();
-    const fail = async (reason: string, userId?: string): Promise<never> => { await this.audit.append(orgId, userId ?? 'anonymous', 'auth.login_failed', { email, reason, ip: ctx.ip }); throw new UnauthorizedException('invalid credentials'); };
+    const fail = async (reason: string, userId?: string): Promise<never> => { this.metrics.inc('sentinel_auth_failures_total', { reason: reason.replace(/[^a-z ]/gi, '').slice(0, 30) }, 1, 'failed login attempts'); await this.audit.append(orgId, userId ?? 'anonymous', 'auth.login_failed', { email, reason, ip: ctx.ip }); throw new UnauthorizedException('invalid credentials'); };
     const prof = await this.db.orgs.get(PLATFORM_ORG, orgId);
     const u = (await this.db.users.where(orgId, { email }))[0];
     const okPw = await verifyPassword(i.password, u?.passwordHash ?? DUMMY_HASH);          // same cost whether or not the account exists

@@ -19,6 +19,7 @@ import { crowdstrike, defender, wazuh } from './edr';
 import { entra, googleWorkspace, okta } from './idp';
 import { aws, azure, gcp } from './cloud';
 import { ConnectorError, HttpClient } from './http';
+import { Metrics } from '../ops/metrics';
 
 export const CONNECTORS: Partial<Record<ConnectorKind, Connector>> = { wazuh, crowdstrike, defender, aws, azure, gcp, entra, okta, google_workspace: googleWorkspace };
 /** Kinds the model knows but that have no implementation yet (reported honestly instead of faking a connection). */
@@ -38,7 +39,7 @@ export class ConnectorsService implements OnModuleInit, OnApplicationShutdown {
   private log = new Logger('Connectors');
   private timer?: NodeJS.Timeout;
   private clients = new Map<string, HttpClient>();
-  constructor(private db: Db, private audit: AuditTrail, private ent: Entitlements, private ctem: CtemService, private iam: IamService, private signals: SignalsService, @Inject(SECRET_BOX) private box: SecretBox, @Inject(EXECUTION_LOCK) private lock: ExecutionLock) {}
+  constructor(private db: Db, private audit: AuditTrail, private ent: Entitlements, private ctem: CtemService, private iam: IamService, private signals: SignalsService, @Inject(SECRET_BOX) private box: SecretBox, @Inject(EXECUTION_LOCK) private lock: ExecutionLock, private metrics: Metrics) {}
 
   onModuleInit() {
     const every = Number(process.env.CONNECTOR_SYNC_INTERVAL_SEC ?? 0);
@@ -142,10 +143,12 @@ export class ConnectorsService implements OnModuleInit, OnApplicationShutdown {
       const done = await this.db.connectors.update(me.orgId, id, (r) => { r.status = 'connected'; r.lastSyncAt = now(); r.lastError = undefined; r.lastTestOk = true; if (res.cursor) r.cursor = res.cursor; });
       await this.db.connectorRuns.update(me.orgId, run.id, { status: 'ok', finishedAt: now(), counts });
       await this.log_(done, `sync OK: ${JSON.stringify(counts)}`);
+      this.metrics.inc('sentinel_connector_syncs_total', { kind: c.kind }, 1, 'successful connector synchronisations');
       await this.audit.append(me.orgId, me.userId, 'connector.synced', { connectorId: id, kind: c.kind, counts });
       return { runId: run.id, counts, connector: this.view(done) };
     } catch (e) {
       const msg = this.fail(e);
+      this.metrics.inc('sentinel_connector_sync_failures_total', { kind: c.kind }, 1, 'failed connector synchronisations');
       const bad = await this.db.connectors.update(me.orgId, id, (r) => { r.status = 'error'; r.lastError = msg; });
       await this.db.connectorRuns.update(me.orgId, run.id, { status: 'error', finishedAt: now(), error: msg }).catch(() => undefined);
       await this.log_(bad, `sync FAILED: ${msg}`);

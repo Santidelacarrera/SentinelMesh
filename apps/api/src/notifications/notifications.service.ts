@@ -11,6 +11,7 @@ import { assertSafeUrl } from '../common/ssrf';
 import { redact, redactString } from '../common/mask';
 import { newId, now, sha256 } from '../common/ids';
 import { Principal } from '../auth/auth';
+import { Metrics } from '../ops/metrics';
 
 export const MAILER = Symbol('MAILER');
 /** Resolves only when the mail server ACCEPTED the message (SMTP 2xx). */
@@ -34,7 +35,7 @@ const STORM_LIMIT = () => Number(process.env.NOTIFY_STORM_LIMIT ?? 10);
 
 @Injectable()
 export class NotificationsService {
-  constructor(private db: Db, private audit: AuditTrail, @Inject(SECRET_BOX) private box: SecretBox, @Inject(MAILER) private mailer: Mailer) {}
+  constructor(private db: Db, private audit: AuditTrail, @Inject(SECRET_BOX) private box: SecretBox, @Inject(MAILER) private mailer: Mailer, private metrics: Metrics) {}
 
   private view(c: NotificationChannel) { const { targetEnc, ...r } = c; return { ...r, hasWebhook: !!targetEnc }; }
   private policy() { let priv: string[] = []; try { priv = JSON.parse(process.env.NOTIFY_PRIVATE_HOSTS ?? '[]'); } catch { /* none */ } return { allowHttp: process.env.NOTIFY_ALLOW_HTTP === '1', allowPrivateHosts: priv }; }
@@ -80,6 +81,7 @@ export class NotificationsService {
 
   private async record(c: NotificationChannel, n: Notice, status: NotificationLog['status'], extra: Partial<NotificationLog> = {}, attempts = 0): Promise<NotificationLog> {
     const l: NotificationLog = { id: newId('ntf'), orgId: c.orgId, channelId: c.id, event: n.event, dedupKey: n.dedupKey, status, subject: redactString(n.subject).slice(0, 200), at: now(), attempts, ...extra };
+    this.metrics.inc('sentinel_notifications_total', { kind: c.kind, status }, 1, 'notifications by channel kind and outcome');
     await this.db.notifications.put(l); return l;
   }
   private async deliverTo(c: NotificationChannel, n: Notice, force = false, escalatedFrom?: string): Promise<NotificationLog> {

@@ -8,6 +8,8 @@ export interface JobQueue {
   enqueue(job: Job): Promise<void>;
   process(handler: JobHandler): void;
   close(): Promise<void>;
+  /** Queue health for operations dashboards (waiting = not yet picked up; failed = exhausted retries and kept for inspection). */
+  depth(): Promise<{ waiting: number; active: number; failed: number }>;
 }
 export const JOB_QUEUE = Symbol('JOB_QUEUE');
 
@@ -35,6 +37,7 @@ export class MemoryQueue implements JobQueue {
   /** Test helper: wait until all queued work (including retries) settles. */
   async idle() { while (this.inflight.size) await Promise.all([...this.inflight]); }
   async close() { await this.idle(); }
+  async depth() { return { waiting: 0, active: this.inflight.size, failed: 0 }; }
 }
 
 export class BullQueue implements JobQueue {
@@ -55,4 +58,5 @@ export class BullQueue implements JobQueue {
     this.worker = new Worker(this.name, async (j) => handler(j.data as Job), { connection: BullQueue.conn(this.redisUrl), concurrency: 4 });
   }
   async close() { await this.worker?.close(); await this.queue.close(); }
+  async depth() { const c = await this.queue.getJobCounts('waiting', 'active', 'failed', 'delayed'); return { waiting: (c['waiting'] ?? 0) + (c['delayed'] ?? 0), active: c['active'] ?? 0, failed: c['failed'] ?? 0 }; }
 }
