@@ -6,7 +6,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**', 'apps/web/shots/**', 'apps/web/test-results/**', 'infra/mesh/generated/**'] },
+  { ignores: ['.venv/**', '**/dist/**', '**/node_modules/**', '**/coverage/**', 'apps/web/shots/**', 'apps/web/test-results/**', 'infra/mesh/generated/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   security.configs.recommended,
