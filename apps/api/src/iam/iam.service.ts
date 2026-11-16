@@ -90,7 +90,7 @@ export class IamService {
         if (unused.length / i.entitlements.length >= 0.7) add('excessive_permissions', i.privileged ? 'high' : 'medium', `${unused.length} of ${i.entitlements.length} entitlements unused in the observed period`);
       }
       if (i.kind === 'human' && i.privileged) { if (i.mfaEnabled === false) add('privileged_no_mfa', 'critical', 'privileged human account without MFA'); else if (i.mfaEnabled === undefined) add('privileged_no_mfa', 'medium', 'MFA status of a privileged account is unknown', 'unverified'); }
-      if (i.kind === 'service' && (i.credentialAgeDays ?? 0) > 90) add('service_no_rotation', i.privileged ? 'high' : 'medium', `service credential is ${i.credentialAgeDays} days old (rotation policy: 90)`);
+      if ((i.kind === 'service' || i.authMethods.some((m) => m.toLowerCase() === 'static_api_key')) && (i.credentialAgeDays ?? 0) > 90) add('service_no_rotation', i.privileged ? 'high' : 'medium', `long-lived credential is ${i.credentialAgeDays} days old (rotation policy: 90)`);
       const weak = i.authMethods.filter((m) => ['password', 'basic', 'ntlm', 'static_api_key', 'sms'].includes(m.toLowerCase()));
       if (weak.length && (i.privileged || i.kind === 'service')) add('weak_auth', i.privileged ? 'high' : 'medium', `relies on weak authentication: ${weak.join(', ')}`);
     }
