@@ -5,7 +5,7 @@ services:
   postgres:
     image: postgres:16-alpine
     environment: { POSTGRES_PASSWORD: dev-only, POSTGRES_DB: sentinelmesh }
-    volumes: ["./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro", "./db/roles.sql:/docker-entrypoint-initdb.d/02-roles.sql:ro"]
+    volumes: ["./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro", "./db/roles.sql:/docker-entrypoint-initdb.d/02-roles.sql:ro", "./db/migrations/0002_enterprise.sql:/docker-entrypoint-initdb.d/03-enterprise.sql:ro"]
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"

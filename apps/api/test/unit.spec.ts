@@ -87,10 +87,10 @@ describe('local analytics fallback', () => {
 describe('production guard', () => {
   it('refuses simulated ports in production', async () => {
     const { Test } = await import('@nestjs/testing'); const { AppModule } = await import('../src/app.module');
-    const prev = { ...process.env }; process.env.NODE_ENV = 'production'; process.env.APPROVAL_SIGNING_KEY = 'k'; delete process.env.INFRA_MODE;
+    const prev = { ...process.env }; process.env.NODE_ENV = 'production'; process.env.APPROVAL_SIGNING_KEY = 'k'; process.env.SECRETS_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64'); delete process.env.INFRA_MODE;
     try { await expect(Test.createTestingModule({ imports: [AppModule] }).compile()).rejects.toThrow(/INFRA_MODE=aws/);
       const { productionProblems } = await import('../src/ports.config');
-      expect(productionProblems({ NODE_ENV: 'production', INFRA_MODE: 'aws', DATABASE_URL: 'x', REDIS_URL: 'x', OBJECT_STORE_BUCKET: 'b', TERRAFORM_ENABLED: '1' } as any)).toEqual([expect.stringContaining('TF_BACKEND_HCL')]);
+      expect(productionProblems({ NODE_ENV: 'production', INFRA_MODE: 'aws', DATABASE_URL: 'x', REDIS_URL: 'x', OBJECT_STORE_BUCKET: 'b', SECRETS_ENCRYPTION_KEY: 'k', TERRAFORM_ENABLED: '1' } as any)).toEqual([expect.stringContaining('TF_BACKEND_HCL')]);
       expect(productionProblems({ NODE_ENV: 'development' } as any)).toEqual([]); }
     finally { process.env = prev; }
   });

@@ -22,6 +22,10 @@ import { portProviders } from './ports.config';
 import { EXECUTION_LOCK, MemoryLock, RedisLock } from './workflow/lock';
 import Redis from 'ioredis';
 import { JOB_QUEUE, BullQueue, MemoryQueue } from './queue/queue';
+import { AuthController } from './auth/auth.controller';
+import { AccountsService, SECRET_BOX } from './auth/accounts.service';
+import { Entitlements } from './platform/entitlements';
+import { SecretBox } from './common/crypto';
 
 @Controller()
 class HealthController {
@@ -29,9 +33,10 @@ class HealthController {
 }
 
 @Module({
-  controllers: [ApiController, HealthController],
+  controllers: [ApiController, AuthController, HealthController],
   providers: [
-    Db, PgBackend, AuditTrail, AuthService, RolesGuard, ApprovalSigner, ApprovalsService, DryRunService, RemediationService, IncidentsService,
+    Db, PgBackend, AuditTrail, AuthService, RolesGuard, AccountsService, Entitlements,
+    { provide: SECRET_BOX, useFactory: () => SecretBox.fromEnv() }, ApprovalSigner, ApprovalsService, DryRunService, RemediationService, IncidentsService,
     IngestService, WorkflowService, WorkflowEngine, CoreHandlers,
     { provide: AnalyticsClient, useFactory: () => new AnalyticsClient() },
     { provide: JOB_QUEUE, useFactory: () => (process.env.REDIS_URL ? new BullQueue(process.env.REDIS_URL) : new MemoryQueue(5, 500)) },

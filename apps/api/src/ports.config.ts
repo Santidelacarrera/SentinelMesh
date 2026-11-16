@@ -47,6 +47,7 @@ export function productionProblems(env = process.env): string[] {
   if (env.INFRA_MODE !== 'aws') p.push('INFRA_MODE=aws (simulated ports are for dev/test only)');
   if (!env.DATABASE_URL) p.push('DATABASE_URL (state lives in PostgreSQL so replicas share it)');
   if (!env.REDIS_URL) p.push('REDIS_URL (shared job queue and execution locks)');
+  if (!env.SECRETS_ENCRYPTION_KEY) p.push('SECRETS_ENCRYPTION_KEY (base64, 32 bytes: encrypts MFA seeds and connector credentials at rest)');
   if (!env.OBJECT_STORE_BUCKET) p.push('OBJECT_STORE_BUCKET (evidence and saved Terraform plans must be shared)');
   if (env.TERRAFORM_ENABLED === '1' && !env.TF_BACKEND_HCL) p.push('TF_BACKEND_HCL (a shared, locking Terraform backend such as S3 + DynamoDB)');
   return p;

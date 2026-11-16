@@ -12,6 +12,7 @@ import { WorkflowEngine } from '../src/workflow/engine';
 import { OBJECT_STORAGE, MemoryObjectStorage } from '../src/storage/object-storage';
 import { AuthService } from '../src/auth/auth';
 import { EXECUTION_LOCK, MemoryLock } from '../src/workflow/lock';
+import { AccountsService } from '../src/auth/accounts.service';
 
 process.env.HEALTH_RETRY_MS = '0';
 delete process.env.ANALYTICS_URL;
@@ -36,8 +37,11 @@ export async function boot() {
     app, http, as, analyst: as('dev-analyst'), approver: as('dev-approver'), viewer: as('dev-viewer'), other: as('other-org-analyst'),
     queue: mod.get<MemoryQueue>(JOB_QUEUE),
     secrets: mod.get<SimulatedSecrets>(PORTS.SECRETS), health: mod.get<SimulatedHealth>(PORTS.HEALTH), infra: mod.get<SimulatedInfra>(PORTS.INFRA),
-    db: mod.get(Db), audit: mod.get(AuditTrail), engine: mod.get(WorkflowEngine), storage: mod.get<MemoryObjectStorage>(OBJECT_STORAGE),
+    acc: mod.get(AccountsService), db: mod.get(Db), audit: mod.get(AuditTrail), engine: mod.get(WorkflowEngine), storage: mod.get<MemoryObjectStorage>(OBJECT_STORAGE),
   };
 }
 export type Env = Awaited<ReturnType<typeof boot>>;
 export const ORG = 'org_acme';
+
+/** Strong password used by tests (satisfies the policy). */
+export const PW = 'Correct-Horse-9-Battery';

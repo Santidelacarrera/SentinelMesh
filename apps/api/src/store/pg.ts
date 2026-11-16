@@ -42,6 +42,9 @@ export class PgRepo<T extends Row> implements Repo<T> {
   async where(orgId: string, match: Partial<Record<string, unknown>>) {
     return this.tx.run(orgId, async (c) => (await c.query(`SELECT doc FROM ${this.table} WHERE org_id = $1 AND doc @> $2::jsonb`, [orgId, JSON.stringify(match)])).rows.map((r) => r.doc as T));
   }
+  async remove(orgId: string, id: string) {
+    return this.tx.run(orgId, async (c) => ((await c.query(`DELETE FROM ${this.table} WHERE id = $1 AND org_id = $2`, [id, orgId])).rowCount ?? 0) > 0);
+  }
   async update(orgId: string, id: string, fn: Partial<T> | ((r: T) => void)) {
     return this.tx.run(orgId, async (c) => {
       const cur = (await c.query(`SELECT doc FROM ${this.table} WHERE id = $1 AND org_id = $2 FOR UPDATE`, [id, orgId])).rows[0]?.doc as T | undefined;
