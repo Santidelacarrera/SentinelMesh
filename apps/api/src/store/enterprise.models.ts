@@ -43,12 +43,16 @@ export interface Vulnerability {
   cvss?: { score: number; vector?: string; version?: string }; epss?: { score: number; percentile?: number; asOf?: string }; kev?: boolean; kevDueDate?: string;
   status: 'open' | 'in_progress' | 'mitigated' | 'resolved' | 'accepted'; confidence: Confidence; evidence: string[]; source: string;
   detectedAt: string; owner?: string; dueDate?: string; fingerprint: string; priority?: PriorityResult; resolvedAt?: string;
+  /** Which imported feeds filled in cvss/epss/kev (never invented). */
+  enrichedFrom?: string[]; statusNote?: string;
 }
 /** Imported threat-intelligence record (NVD / CISA KEV / EPSS). Only what the feed said; never invented. */
 export interface IntelRecord { id: string; orgId: string; cve: string; cvss?: { score: number; vector?: string; version?: string }; cwe?: string; kev?: boolean; kevDueDate?: string; epss?: { score: number; percentile?: number; asOf?: string }; description?: string; sources: string[]; updatedAt: string }
 export interface ExposureFinding {
   id: string; orgId: string; assetId: string; kind: 'open_port' | 'tls_expiring' | 'tls_invalid' | 'insecure_config' | 'forgotten_asset' | 'unnecessary_service';
   title: string; detail: string; severity: Severity; evidence: string[]; confidence: Confidence; status: 'open' | 'resolved'; firstSeen: string; lastSeen: string; fingerprint: string; resolvedAt?: string;
+  /** Consecutive observations. A single sighting stays "suspected" until a second scan sees it again (false-positive control). */
+  seen: number; source: string;
 }
 export interface ExposureEvent { id: string; orgId: string; assetId?: string; at: string; type: 'asset_discovered' | 'asset_changed' | 'asset_stale' | 'exposure_opened' | 'exposure_resolved' | 'ownership_verified'; detail: string }
 

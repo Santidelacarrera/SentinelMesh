@@ -13,12 +13,16 @@ import { OBJECT_STORAGE, MemoryObjectStorage } from '../src/storage/object-stora
 import { AuthService } from '../src/auth/auth';
 import { EXECUTION_LOCK, MemoryLock } from '../src/workflow/lock';
 import { AccountsService } from '../src/auth/accounts.service';
+import { DNS_RESOLVER, TLS_PROBE, DnsResolver, TlsProbe } from '../src/ctem/ctem.service';
 
 process.env.HEALTH_RETRY_MS = '0';
 delete process.env.ANALYTICS_URL;
 
-export async function boot() {
-  const mod = await Test.createTestingModule({ imports: [AppModule] })
+export async function boot(o: { dns?: DnsResolver; tls?: TlsProbe } = {}) {
+  let b = Test.createTestingModule({ imports: [AppModule] });
+  if (o.dns) b = b.overrideProvider(DNS_RESOLVER).useValue(o.dns);
+  if (o.tls) b = b.overrideProvider(TLS_PROBE).useValue(o.tls);
+  const mod = await b
     .overrideProvider(JOB_QUEUE).useValue(new MemoryQueue(4, 0))
     .overrideProvider(EXECUTION_LOCK).useValue(new MemoryLock())
     .overrideProvider(OBJECT_STORAGE).useValue(new MemoryObjectStorage())
