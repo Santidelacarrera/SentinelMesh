@@ -5,6 +5,7 @@ import { Signal } from '../store/enterprise.models';
 import { AuditTrail } from '../audit/audit-trail';
 import { newId, now, sha256 } from '../common/ids';
 import { redact } from '../common/mask';
+import { EventBus } from '../common/events';
 import type { SignalInput } from '../connectors/types';
 
 export const SignalSchema = z.object({
@@ -20,7 +21,7 @@ export type SignalListener = (orgId: string, created: Signal[]) => Promise<void>
 export class SignalsService {
   private log = new Logger('Signals');
   private listeners: SignalListener[] = [];
-  constructor(private db: Db, private audit: AuditTrail) {}
+  constructor(private db: Db, private audit: AuditTrail, private bus: EventBus) {}
   onCreated(l: SignalListener) { this.listeners.push(l); }
 
   async ingest(orgId: string, actor: string, inputs: SignalInput[]): Promise<{ created: number; duplicates: number; signals: Signal[] }> {
@@ -40,6 +41,7 @@ export class SignalsService {
     if (created.length) {
       await this.audit.append(orgId, actor, 'signals.ingested', { count: created.length, duplicates: dup, sources: [...new Set(created.map((c) => c.source))] });
       for (const l of this.listeners) await l(orgId, created).catch((e) => this.log.error(`signal listener failed: ${(e as Error).message}`));
+      for (const s of created) { const a = s.assetId ? await this.db.inventory.get(orgId, s.assetId) : undefined; await this.bus.emit({ type: 'signal', orgId, actor, entity: { ...s, assetName: a?.name } }); }
     }
     return { created: created.length, duplicates: dup, signals: created };
   }

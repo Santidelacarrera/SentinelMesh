@@ -92,7 +92,7 @@ export interface Evidence {
 
 // ───────── SOAR ─────────
 export type AutomationMode = 'OBSERVE' | 'ASSISTED' | 'AUTOMATED';
-export type TriggerType = 'signal' | 'vulnerability' | 'exposure' | 'identity';
+export type TriggerType = 'signal' | 'finding' | 'vulnerability' | 'exposure' | 'identity';
 export interface Condition { field: string; op: 'eq' | 'neq' | 'gte' | 'lte' | 'in' | 'contains' | 'exists'; value?: unknown }
 export type PlaybookActionType = 'create_case' | 'create_ticket' | 'notify' | 'tag' | 'propose_account_lock' | 'propose_session_revoke' | 'propose_endpoint_isolation' | 'propose_config_fix' | 'propose_patch_request' | 'propose_permission_change';
 export interface PlaybookAction { type: PlaybookActionType; params: Record<string, unknown> }
@@ -103,6 +103,8 @@ export interface Playbook {
 export interface RunStep { index: number; action: PlaybookActionType; params: Record<string, unknown>; risky: boolean; status: 'planned' | 'proposed' | 'awaiting_approval' | 'approved' | 'executed' | 'skipped' | 'failed' | 'rejected'; result?: Record<string, unknown>; idempotencyKey: string; planHash?: string; approvalId?: string }
 export interface PlaybookRun {
   id: string; orgId: string; playbookId: string; playbookKey: string; playbookVersion: number; mode: AutomationMode; effectiveMode: AutomationMode; trigger: { type: TriggerType; refId: string };
+  /** `${playbookKey}:${type}:${refId}` — one run per playbook per triggering entity. */
+  dedupKey: string; requestedBy: string;
   evidence: string[]; steps: RunStep[]; status: 'observed' | 'awaiting_approval' | 'executing' | 'completed' | 'failed' | 'rejected' | 'stopped' | 'skipped'; reason?: string; createdAt: string; updatedAt: string; history: Array<{ at: string; text: string }>;
 }
 /** Effect recorded by the lab executor (the only executor shipped): proves the path end-to-end without touching real systems. */

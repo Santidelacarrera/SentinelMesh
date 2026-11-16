@@ -3,7 +3,7 @@ import { Pool, PoolClient } from 'pg';
 import { Db, TABLES } from './db';
 import { AuditTrail, AuditStore } from '../audit/audit-trail';
 import { AuditEntry } from './models';
-import { Repo, Row, UniqueConflict } from './store';
+import { Repo, Row, RowNotFound, UniqueConflict } from './store';
 
 /** Runs `fn` in a transaction with `app.org_id` set, so PostgreSQL row-level security applies to every statement. */
 export class PgTx {
@@ -48,7 +48,7 @@ export class PgRepo<T extends Row> implements Repo<T> {
   async update(orgId: string, id: string, fn: Partial<T> | ((r: T) => void)) {
     return this.tx.run(orgId, async (c) => {
       const cur = (await c.query(`SELECT doc FROM ${this.table} WHERE id = $1 AND org_id = $2 FOR UPDATE`, [id, orgId])).rows[0]?.doc as T | undefined;
-      if (!cur) throw new Error(`not found: ${id}`);
+      if (!cur) throw new RowNotFound(`not found: ${id}`);
       if (typeof fn === 'function') fn(cur); else Object.assign(cur, fn);   // a throw rolls the transaction back
       await c.query(`UPDATE ${this.table} SET doc = $1, updated_at = now() WHERE id = $2 AND org_id = $3`, [JSON.stringify(cur), id, orgId]);
       return cur;

@@ -12,6 +12,7 @@ import { newId, now, sha256 } from '../common/ids';
 import { randomToken } from '../common/crypto';
 import { isPrivateIp } from '../common/ssrf';
 import { Principal } from '../auth/auth';
+import { EventBus } from '../common/events';
 import { INTEL_PARSERS, IntelPatch } from './intel';
 import { prioritize, PriorityContext } from './priority';
 import { analyzeAttackPaths, PathOptions } from './attack-paths';
@@ -62,7 +63,7 @@ const addDays = (iso: string, d: number) => new Date(Date.parse(iso) + d * 86400
 
 @Injectable()
 export class CtemService {
-  constructor(private db: Db, private audit: AuditTrail, private ent: Entitlements, @Inject(DNS_RESOLVER) private dns: DnsResolver, @Inject(TLS_PROBE) private tls: TlsProbe) {}
+  constructor(private db: Db, private audit: AuditTrail, private ent: Entitlements, @Inject(DNS_RESOLVER) private dns: DnsResolver, @Inject(TLS_PROBE) private tls: TlsProbe, private bus: EventBus) {}
 
   // ═════════ assets ═════════
   async upsertAsset(me: Pick<Principal, 'orgId' | 'userId'>, i: z.infer<typeof AssetSchema>): Promise<{ asset: InventoryAsset; created: boolean }> {
@@ -179,6 +180,7 @@ export class CtemService {
     if (!created) return row;                       // same finding reported again: idempotent
     const out = await this.db.vulns.update(me.orgId, row.id, { priority: prioritize(row, await this.contextFor(me.orgId, asset)) });
     await this.audit.append(me.orgId, me.userId, 'vuln.created', { vulnId: row.id, assetId: asset.id, cve, severity, confidence: i.confidence, source: i.source, priority: out.priority?.level });
+    await this.bus.emit({ type: 'vulnerability', orgId: me.orgId, actor: me.userId, entity: { ...out, assetName: asset.name } });
     return out;
   }
   async setVulnStatus(me: Principal, id: string, status: Vulnerability['status'], note?: string, owner?: string, dueDate?: string) {
@@ -270,9 +272,9 @@ export class CtemService {
       const fingerprint = sha256(`${asset.id}|${o.kind}|${o.title.toLowerCase()}`); seenFp.add(fingerprint);
       const t = now(), e: ExposureFinding = { id: newId('exp'), orgId: me.orgId, assetId: asset.id, kind: o.kind, title: o.title, detail: o.detail, severity: o.severity, evidence: o.evidence, confidence: o.confidence, status: 'open', firstSeen: t, lastSeen: t, fingerprint, seen: 1, source: i.source };
       const { row, created } = await this.db.exposures.createUnique(e, { fingerprint, status: 'open' });
-      if (created) { opened++; await this.event(me.orgId, asset.id, 'exposure_opened', `${o.kind}: ${o.title} (${o.confidence})`); continue; }
+      if (created) { opened++; await this.event(me.orgId, asset.id, 'exposure_opened', `${o.kind}: ${o.title} (${o.confidence})`); await this.bus.emit({ type: 'exposure', orgId: me.orgId, actor: me.userId, entity: { ...row, assetName: asset.name } }); continue; }
       const out = await this.db.exposures.update(me.orgId, row.id, (r) => { r.seen++; r.lastSeen = t; r.evidence = [...new Set([...r.evidence, ...o.evidence])].slice(-30); if (r.confidence !== 'confirmed' && (r.seen >= 2 || o.confidence === 'confirmed')) r.confidence = 'confirmed'; });
-      if (row.confidence !== 'confirmed' && out.confidence === 'confirmed') confirmed++;
+      if (row.confidence !== 'confirmed' && out.confidence === 'confirmed') { confirmed++; await this.bus.emit({ type: 'exposure', orgId: me.orgId, actor: me.userId, entity: { ...out, assetName: asset.name } }); }
     }
     if (i.complete) for (const x of await this.db.exposures.where(me.orgId, { assetId: asset.id, status: 'open' })) {
       if (kinds.has(x.kind) && !seenFp.has(x.fingerprint)) { await this.db.exposures.update(me.orgId, x.id, { status: 'resolved', resolvedAt: now() }); resolved++; await this.event(me.orgId, asset.id, 'exposure_resolved', `${x.kind}: ${x.title} no longer observed`); }

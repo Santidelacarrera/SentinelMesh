@@ -11,6 +11,10 @@ import { Principal } from '../auth/auth';
 export class ApprovalsService {
   constructor(private db: Db, private signer: ApprovalSigner, private audit: AuditTrail, @Inject(JOB_QUEUE) private queue: JobQueue) {}
 
+  private listeners: Array<(a: SecOpsApproval) => Promise<void>> = [];
+  /** Called after a decision is stored (used by SOAR playbook runs to resume or stop). */
+  onDecision(fn: (a: SecOpsApproval) => Promise<void>) { this.listeners.push(fn); }
+
   /** Idempotent: one approval request per (execution, step). */
   async request(orgId: string, executionId: string, stepName: string, plan: { id: string; planHash: string }): Promise<SecOpsApproval> {
     // The DB unique index on (execution, step) makes this safe even if two replicas ask at the same moment.
@@ -31,7 +35,8 @@ export class ApprovalsService {
     if (!a) throw new NotFoundException('approval not found'); // also hides other tenants' ids
     if (a.status !== 'pending') throw new ConflictException(`already ${a.status}`);
     const ex = await this.db.executions.get(me.orgId, a.executionId);
-    if (ex && ex.context['requestedBy'] === me.userId) throw new ForbiddenException('separation of duties: the requester cannot approve their own change');
+    const requester = ex ? (ex.context['requestedBy'] as string | undefined) : (await this.db.runs.get(me.orgId, a.executionId))?.requestedBy;   // classic executions or SOAR playbook runs
+    if (requester && requester === me.userId) throw new ForbiddenException('separation of duties: the requester cannot approve their own change');
     const decidedAt = now();
     const signature = await this.signer.sign(a, decision, me.userId, decidedAt);
     // Compare-and-set under a row lock: if two approvers (on two replicas) decide at once, exactly one wins, the other gets 409.
@@ -41,6 +46,7 @@ export class ApprovalsService {
     });
     await this.audit.append(me.orgId, me.userId, `approval.${decision}`, { approvalId: id, executionId: a.executionId, planId: a.planId, planHash: a.planHash, comment });
     await this.queue.enqueue({ orgId: me.orgId, executionId: a.executionId });
+    for (const l of this.listeners) await l(out);
     return out;
   }
 }

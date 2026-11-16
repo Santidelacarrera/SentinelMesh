@@ -1,4 +1,6 @@
 import { Controller, Get, MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
+import { RowNotFoundFilter } from './common/not-found.filter';
 import { RateLimit, SecurityHeaders } from './http-hardening';
 import { CorrelationMiddleware } from './common/correlation';
 import { ApiController } from './api.controllers';
@@ -32,6 +34,14 @@ import { IamService } from './iam/iam.service';
 import { ConnectorsController } from './connectors/connectors.controller';
 import { ConnectorsService } from './connectors/connectors.service';
 import { SignalsService } from './signals/signals.service';
+import { EventBus } from './common/events';
+import { CasesController } from './cases/cases.controller';
+import { CasesService } from './cases/cases.service';
+import { EvidenceService } from './cases/evidence.service';
+import { CorrelationService } from './cases/correlation.service';
+import { NotificationsService, MAILER, SmtpMailer } from './notifications/notifications.service';
+import { PlaybooksService, SOAR_EXECUTOR, LabExecutor } from './soar/playbooks.service';
+import { SoarController, NotificationsController } from './soar/soar.controller';
 import { CtemService, DNS_RESOLVER, TLS_PROBE, defaultDns, defaultTlsProbe } from './ctem/ctem.service';
 
 @Controller()
@@ -40,10 +50,12 @@ class HealthController {
 }
 
 @Module({
-  controllers: [ApiController, AuthController, CtemController, IamController, ConnectorsController, HealthController],
+  controllers: [ApiController, AuthController, CtemController, IamController, ConnectorsController, CasesController, SoarController, NotificationsController, HealthController],
   providers: [
     Db, PgBackend, AuditTrail, AuthService, RolesGuard, AccountsService, Entitlements,
-    CtemService, IamService, SignalsService, ConnectorsService, { provide: DNS_RESOLVER, useValue: defaultDns }, { provide: TLS_PROBE, useValue: defaultTlsProbe },
+    { provide: APP_FILTER, useClass: RowNotFoundFilter },
+    EventBus, CtemService, IamService, SignalsService, ConnectorsService, CasesService, EvidenceService, CorrelationService, NotificationsService, PlaybooksService, LabExecutor,
+    { provide: MAILER, useFactory: () => new SmtpMailer() }, { provide: SOAR_EXECUTOR, useExisting: LabExecutor }, { provide: DNS_RESOLVER, useValue: defaultDns }, { provide: TLS_PROBE, useValue: defaultTlsProbe },
     { provide: SECRET_BOX, useFactory: () => SecretBox.fromEnv() }, ApprovalSigner, ApprovalsService, DryRunService, RemediationService, IncidentsService,
     IngestService, WorkflowService, WorkflowEngine, CoreHandlers,
     { provide: AnalyticsClient, useFactory: () => new AnalyticsClient() },

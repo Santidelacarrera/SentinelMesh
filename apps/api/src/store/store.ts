@@ -5,6 +5,8 @@
 export interface Row { id: string; orgId: string }
 
 export class UniqueConflict extends Error {}
+/** Thrown when a row does not exist in the caller's organisation (other tenants' ids look exactly like missing ones). Mapped to HTTP 404. */
+export class RowNotFound extends Error {}
 
 export interface Repo<T extends Row> {
   /** Upsert by id. */
@@ -36,7 +38,7 @@ export class MemoryRepo<T extends Row> implements Repo<T> {
   async remove(orgId: string, id: string) { const r = this.rows.get(id); if (!r || r.orgId !== orgId) return false; return this.rows.delete(id); }
   async update(orgId: string, id: string, fn: Partial<T> | ((r: T) => void)) {
     const cur = this.rows.get(id);
-    if (!cur || cur.orgId !== orgId) throw new Error(`not found: ${id}`);
+    if (!cur || cur.orgId !== orgId) throw new RowNotFound(`not found: ${id}`);
     const draft = structuredClone(cur);               // throw inside fn ⇒ nothing is applied (same as a rolled-back transaction)
     if (typeof fn === 'function') fn(draft); else Object.assign(draft, fn);
     this.rows.set(id, draft);
