@@ -27,6 +27,8 @@ import { AccountsService, SECRET_BOX } from './auth/accounts.service';
 import { Entitlements } from './platform/entitlements';
 import { SecretBox } from './common/crypto';
 import { CtemController } from './ctem/ctem.controller';
+import { IamController } from './iam/iam.controller';
+import { IamService } from './iam/iam.service';
 import { CtemService, DNS_RESOLVER, TLS_PROBE, defaultDns, defaultTlsProbe } from './ctem/ctem.service';
 
 @Controller()
@@ -35,10 +37,10 @@ class HealthController {
 }
 
 @Module({
-  controllers: [ApiController, AuthController, CtemController, HealthController],
+  controllers: [ApiController, AuthController, CtemController, IamController, HealthController],
   providers: [
     Db, PgBackend, AuditTrail, AuthService, RolesGuard, AccountsService, Entitlements,
-    CtemService, { provide: DNS_RESOLVER, useValue: defaultDns }, { provide: TLS_PROBE, useValue: defaultTlsProbe },
+    CtemService, IamService, { provide: DNS_RESOLVER, useValue: defaultDns }, { provide: TLS_PROBE, useValue: defaultTlsProbe },
     { provide: SECRET_BOX, useFactory: () => SecretBox.fromEnv() }, ApprovalSigner, ApprovalsService, DryRunService, RemediationService, IncidentsService,
     IngestService, WorkflowService, WorkflowEngine, CoreHandlers,
     { provide: AnalyticsClient, useFactory: () => new AnalyticsClient() },
