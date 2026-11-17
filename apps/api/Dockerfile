@@ -13,5 +13,6 @@ COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
 RUN npm ci -w apps/api --include-workspace-root --omit=dev
 COPY --from=build /repo/apps/api/dist apps/api/dist
+COPY db db
 USER node
 CMD ["node", "apps/api/dist/main.js"]

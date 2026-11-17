@@ -1,0 +1,6 @@
+apiVersion: v2
+name: sentinelmesh
+description: SentinelMesh CTEM + IAM + SOAR platform (api, console, analytics). Secrets are referenced, never embedded.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

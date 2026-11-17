@@ -11,7 +11,7 @@
     "perf": "ts-node scripts/perf.ts",
     "demo:enterprise": "ts-node scripts/demo-enterprise.ts",
     "demo": "ts-node scripts/demo-server.ts",
-    "db:migrate": "ts-node scripts/migrate.ts",
+    "db:migrate": "node ../../db/migrate.js",
     "test:coverage": "jest --runInBand --forceExit --coverage --collectCoverageFrom='src/**/*.ts' --coverageReporters=text-summary"
   },
   "jest": {

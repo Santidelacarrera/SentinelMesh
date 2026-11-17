@@ -1,0 +1,25 @@
+name: release
+# Manual, versioned, gated. Builds and attests artifacts; it does NOT push images or deploy anywhere.
+# Publishing requires a human to run this workflow, approve the "release" environment, and add a registry step deliberately.
+on:
+  workflow_dispatch:
+    inputs: { version: { description: 'Semantic version (e.g. 0.2.0)', required: true } }
+permissions: { contents: read }
+jobs:
+  verify-and-package:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Package chart
+        run: |
+          sed -i "s/^version: .*/version: ${{ inputs.version }}/; s/^appVersion: .*/appVersion: \"${{ inputs.version }}\"/" deploy/helm/sentinelmesh/Chart.yaml
+          helm package deploy/helm/sentinelmesh --destination dist
+      - uses: actions/upload-artifact@v4
+        with: { name: 'sentinelmesh-${{ inputs.version }}', path: dist }
