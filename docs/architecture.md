@@ -102,3 +102,55 @@ Verificado con el binario de Terraform 1.9.8 y el proveedor AWS 5.82 contra moto
 - `CredentialIssuer` por defecto genera valores aleatorios en Secrets Manager; para rotar claves IAM, usuarios de BD o APIs de terceros hay que implementar el emisor de cada sistema.
 - Docker no se ejecutó (sin daemon); el Dockerfile se validó paso a paso fuera de Docker.
 - Si una ejecución agota los reintentos de la cola, queda en `running` hasta que se reintente manualmente (BullMQ conserva el trabajo fallido).
+
+
+---
+
+# Plataforma empresarial (rama enterprise-upgrade)
+
+Este apartado describe lo añadido sobre el núcleo anterior (documentado arriba).
+
+## Responsabilidades (ADR-0008)
+| Servicio | Responsabilidad | Tecnología |
+|---|---|---|
+| **API / control plane** (`apps/api`) | Autenticación, multi-tenant, CTEM, IAM, correlación, casos, evidencia, SOAR, conectores, notificaciones, informes, IA asistiva, privacidad, observabilidad | NestJS (TypeScript) |
+| **Analítica** (`services/analytics`) | Puntuación determinista de exposición, mínimo privilegio, resumen forense con citas (con *fallback* idéntico en la API) | FastAPI (Python) |
+| **Consola** (`apps/web`) | Interfaz SecOps | React + Vite |
+| **Estado** | PostgreSQL (JSONB + RLS), Redis (cola y bloqueos), S3/MinIO (evidencia, informes, planes) | |
+
+El prompt de partida asumía Python como backend principal; el repositorio tenía NestJS como plano de control. Para **no implementar dos veces la misma lógica**, todos los motores nuevos viven en TypeScript; Python conserva únicamente la analítica determinista ya existente.
+
+## Mapa de módulos (`apps/api/src`)
+```
+auth/        usuarios, sesiones, MFA, RBAC (permisos), roles propios, administración de plataforma
+platform/    planes y límites (licenciamiento)
+ctem/        inventario, verificación de propiedad, NVD/KEV/EPSS, vulnerabilidades, exposición, rutas de ataque, prioridad
+iam/         identidades, historial de privilegios, reglas de riesgo, propuestas de reducción
+connectors/  transporte común + Wazuh, CrowdStrike, Defender, Entra, Okta, Google, AWS, Azure, GCP
+signals/     normalización y deduplicación de eventos de cualquier fuente
+cases/       correlación, casos (incidentes), evidencia con cadena de custodia
+soar/        playbooks, niveles OBSERVE/ASSISTED/AUTOMATED, aprobación firmada, kill switch, ejecutor de laboratorio
+notifications/ email, Slack, Teams
+reports/ dashboard/ ai/ privacy/ ops/   informes PDF, vista ejecutiva, asistente, GDPR, métricas
+workflow/ approvals/ remediation/ ...   núcleo previo (rotación sin cortes, Terraform, aprobación de planes)
+```
+
+## Flujo de datos
+```
+conectores ──► signals ──► correlación ──► caso ──► evidencia
+    │             │                         ▲
+    │             └──► EventBus ──► playbooks (SOAR) ──► aprobación firmada ──► ejecutor (laboratorio)
+    ▼                                   │
+inventario/identidades ──► prioridad ◄──┘ ──► rutas de ataque ──► dashboard / informes PDF
+```
+`EventBus` (en proceso) desacopla los emisores (señales, hallazgos, vulnerabilidades, exposiciones, identidades) del motor SOAR: un playbook que falla nunca rompe una ingesta.
+
+## Decisiones de diseño que importan
+- **Aislamiento por organización en dos capas**: cada repositorio exige `orgId` y PostgreSQL fuerza RLS por `app.org_id` en las 41 tablas de datos. Un id ajeno es indistinguible de uno inexistente (`404`).
+- **Hechos vs hipótesis**: las correlaciones son `probable` hasta que una persona las confirma; las rutas de ataque son `theoretical`/`corroborated`, nunca "intrusión confirmada"; las vulnerabilidades de conectores son `suspected`; EPSS/KEV/CVSS solo existen si se importaron (nunca se inventan).
+- **Nada destructivo sin firma**: los pasos de riesgo (`propose_*`) generan una aprobación firmada ligada al **hash exacto** del paso; el único ejecutor incluido es de laboratorio (registra, no toca sistemas reales).
+- **Auditoría encadenada por hash** por organización; acciones de plataforma se registran en la organización `org_platform` y en la afectada.
+- **Migraciones versionadas** (`db/migrate.js`): `0001_baseline` + `db/migrations/NNNN_*.sql`, registradas con SHA-256.
+
+## Límites conocidos
+Ver `ROADMAP.md`. En particular: el rendimiento de la correlación y de las consultas de lista es O(n) por organización (ver `TESTING.md`), los conectores solo se probaron contra servidores de protocolo locales, y no hay ejecutores de escritura reales.

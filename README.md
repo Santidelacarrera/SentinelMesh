@@ -10,6 +10,23 @@ simula el cambio (diff / Terraform) → ejecuta de forma idempotente **solo tras
 > funciona y se prueba **sin red ni nube**: los puertos externos son simulaciones en proceso por defecto ([ADR-0001](docs/adr/0001-nucleo-minimo-y-puertos-simulados.md)).
 > Los adaptadores de nube (AWS) son opcionales (`INFRA_MODE=aws`). Decisiones y bitácora: [`docs/BITACORA.md`](docs/BITACORA.md).
 
+## Plataforma empresarial (rama `sentinelmesh-enterprise-upgrade`) — madurez **ALPHA**
+Sobre el núcleo anterior se añadieron: multi-tenant con usuarios/MFA/sesiones/RBAC y planes, **CTEM** (inventario con propiedad verificada, NVD/KEV/EPSS, exposición, rutas de ataque, prioridad explicable), **IAM**, **9 conectores** (Wazuh, CrowdStrike, Defender, Entra, Okta, Google Workspace, AWS, Azure, GCP), señales + correlación + **casos** + **evidencia con cadena de custodia**, **SOAR** (OBSERVE / ASSISTED / AUTOMATED apagado por defecto, aprobación firmada, kill switch), notificaciones, **informes PDF**, asistente de IA con fuentes, herramientas de privacidad, métricas y Helm.
+
+> **Estado verificable, sin adornos:** los conectores solo se probaron contra servidores locales que imitan el protocolo (**no hay ninguno verificado con un servicio real**); el único ejecutor SOAR es de **laboratorio** (no actúa sobre sistemas reales); no hay certificaciones ni pentest independiente; imágenes, Helm y CI nuevos no se ejecutaron. Detalle y pasos para validar en [`docs/ROADMAP.md`](docs/ROADMAP.md) y [`docs/CONNECTORS.md`](docs/CONNECTORS.md).
+
+```bash
+npm ci && npm test && npm run demo:enterprise -w apps/api    # demo reproducible: fuente simulada → correlación → caso → aprobación → ejecutor de laboratorio → PDF → auditoría
+```
+| Documento | Contenido |
+|---|---|
+| [`docs/AUDIT.md`](docs/AUDIT.md) · [`docs/architecture.md`](docs/architecture.md) · [`docs/adr/0008`](docs/adr/0008-motores-empresariales-en-nestjs.md) | auditoría inicial, arquitectura y decisión de responsabilidades |
+| [`SECURITY.md`](SECURITY.md) · [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) · [`docs/MULTITENANCY.md`](docs/MULTITENANCY.md) | controles, amenazas, aislamiento |
+| [`docs/CTEM_GUIDE.md`](docs/CTEM_GUIDE.md) · [`docs/IAM_GUIDE.md`](docs/IAM_GUIDE.md) · [`docs/SOAR_GUIDE.md`](docs/SOAR_GUIDE.md) · [`docs/INCIDENT_RESPONSE.md`](docs/INCIDENT_RESPONSE.md) · [`docs/FORENSICS.md`](docs/FORENSICS.md) | guías por módulo |
+| [`docs/CONNECTORS.md`](docs/CONNECTORS.md) · [`docs/API_DOCUMENTATION.md`](docs/API_DOCUMENTATION.md) | integraciones y las 138 rutas |
+| [`docs/INSTALLATION.md`](docs/INSTALLATION.md) · [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) · [`docs/TESTING.md`](docs/TESTING.md) | instalar, desplegar, resultados medidos |
+| [`docs/COMMERCIAL_MODEL.md`](docs/COMMERCIAL_MODEL.md) · [`docs/COMPETITIVE.md`](docs/COMPETITIVE.md) · [`docs/ROADMAP.md`](docs/ROADMAP.md) · [`CHANGELOG.md`](CHANGELOG.md) · [`CONTRIBUTING.md`](CONTRIBUTING.md) | negocio, hoja de ruta |
+
 ## Requisitos
 Node.js ≥ 22.22 y npm ≥ 10 · Python ≥ 3.12 (probado con 3.13) · (opcional) Redis, PostgreSQL 16 y Docker para las suites de integración. Nada más: no hace falta cuenta de nube.
 

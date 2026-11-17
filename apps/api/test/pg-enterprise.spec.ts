@@ -53,7 +53,7 @@ const url = process.env.TEST_DATABASE_URL; // sentinel_app role: NOSUPERUSER NOB
     await as('o_b', async (q) => {
       expect((await q('SELECT * FROM evidence_item')).rowCount).toBe(0);                                                       // cannot read o_a
       await expect(q("INSERT INTO evidence_item (id, org_id, doc) VALUES ('ev2','o_a','{}')")).rejects.toThrow(/row-level security/);   // cannot write as o_a
-    }).catch(() => undefined);
+    });
     await expect(as('o_a', async (q) => { await q("UPDATE evidence_item SET doc = jsonb_set(doc,'{sha256}','\"bb\"') WHERE id='ev1'"); })).rejects.toThrow(/immutable/);
     await expect(as('o_a', async (q) => { await q("DELETE FROM evidence_item WHERE id='ev1'"); })).rejects.toThrow(/cannot be deleted|permission denied/);
     await as('o_a', async (q) => { await q("UPDATE evidence_item SET doc = jsonb_set(doc,'{metadata}','{\"a\":1}') WHERE id='ev1'"); });   // descriptive metadata is allowed
