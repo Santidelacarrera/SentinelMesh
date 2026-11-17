@@ -1,0 +1,47 @@
+name: security
+# Supply-chain and container checks. Nothing here publishes an image or a release.
+on:
+  push:
+  pull_request:
+  schedule: [{ cron: '17 3 * * 1' }]
+permissions: { contents: read }
+jobs:
+  secrets-and-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Dependency audit (high and critical fail the build)
+        run: npm audit --audit-level=high
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}', GITLEAKS_CONFIG: .gitleaks.toml }
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images locally (not pushed)
+        run: |
+          docker build -f apps/api/Dockerfile -t sentinelmesh-api:ci .
+          docker build -f apps/web/Dockerfile -t sentinelmesh-web:ci .
+          docker build -t sentinelmesh-analytics:ci services/analytics
+      - name: Scan images (Trivy; high/critical with a fix available fail)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with: { image-ref: 'sentinelmesh-api:ci', severity: 'HIGH,CRITICAL', ignore-unfixed: true, exit-code: '1' }
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with: { image-ref: 'sentinelmesh-web:ci', severity: 'HIGH,CRITICAL', ignore-unfixed: true, exit-code: '1' }
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with: { image-ref: 'sentinelmesh-analytics:ci', severity: 'HIGH,CRITICAL', ignore-unfixed: true, exit-code: '1' }
+      - name: Scan IaC (Dockerfiles, Helm, Terraform)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with: { scan-type: config, scan-ref: '.', severity: 'HIGH,CRITICAL', exit-code: '1' }
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm lint deploy/helm/sentinelmesh --strict --set secrets.existingSecret=sm-secrets
+      - run: helm template sm deploy/helm/sentinelmesh --set secrets.existingSecret=sm-secrets >/dev/null

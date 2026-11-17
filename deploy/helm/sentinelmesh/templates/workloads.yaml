@@ -1,0 +1,143 @@
+{{- if not .Values.secrets.existingSecret }}{{ fail "secrets.existingSecret is required: SentinelMesh never ships secrets in a chart" }}{{- end }}
+{{- $sec := .Values.secrets.existingSecret }}
+{{- $podSec := dict "runAsNonRoot" true "seccompProfile" (dict "type" "RuntimeDefault") }}
+{{- $ctrSec := dict "allowPrivilegeEscalation" false "readOnlyRootFilesystem" true "capabilities" (dict "drop" (list "ALL")) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: {{ .Release.Name }}-api, labels: { app.kubernetes.io/name: sentinelmesh-api, app.kubernetes.io/instance: {{ .Release.Name }} } }
+spec:
+  replicas: {{ .Values.replicaCount.api }}
+  selector: { matchLabels: { app.kubernetes.io/name: sentinelmesh-api, app.kubernetes.io/instance: {{ .Release.Name }} } }
+  template:
+    metadata: { labels: { app.kubernetes.io/name: sentinelmesh-api, app.kubernetes.io/instance: {{ .Release.Name }} } }
+    spec:
+      securityContext: {{ $podSec | toJson }}
+      containers:
+        - name: api
+          image: "{{ .Values.images.api.repository }}:{{ .Values.images.api.tag }}"
+          securityContext: {{ $ctrSec | toJson }}
+          ports: [{ name: http, containerPort: 3000 }]
+          env:
+            - { name: NODE_ENV, value: production }
+            - { name: INFRA_MODE, value: aws }
+            - { name: ANALYTICS_URL, value: "http://{{ .Release.Name }}-analytics:8000" }
+            {{- range $k, $v := .Values.config }}{{ if $v }}
+            - { name: {{ $k }}, value: {{ $v | quote }} }
+            {{- end }}{{ end }}
+          envFrom: [{ secretRef: { name: {{ $sec }} } }]
+          readinessProbe: { httpGet: { path: /readyz, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 20 }
+          resources: {{ .Values.resources.api | toJson }}
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: {{ .Release.Name }}-api }
+spec:
+  selector: { app.kubernetes.io/name: sentinelmesh-api, app.kubernetes.io/instance: {{ .Release.Name }} }
+  ports: [{ name: http, port: 3000, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: {{ .Release.Name }}-web, labels: { app.kubernetes.io/name: sentinelmesh-web, app.kubernetes.io/instance: {{ .Release.Name }} } }
+spec:
+  replicas: {{ .Values.replicaCount.web }}
+  selector: { matchLabels: { app.kubernetes.io/name: sentinelmesh-web, app.kubernetes.io/instance: {{ .Release.Name }} } }
+  template:
+    metadata: { labels: { app.kubernetes.io/name: sentinelmesh-web, app.kubernetes.io/instance: {{ .Release.Name }} } }
+    spec:
+      securityContext: {{ $podSec | toJson }}
+      containers:
+        - name: web
+          image: "{{ .Values.images.web.repository }}:{{ .Values.images.web.tag }}"
+          securityContext: {{ $ctrSec | toJson }}
+          ports: [{ name: http, containerPort: 8080 }]
+          env: [{ name: API_UPSTREAM, value: "http://{{ .Release.Name }}-api:3000" }]
+          readinessProbe: { httpGet: { path: /, port: http } }
+          resources: {{ .Values.resources.web | toJson }}
+          # nginx renders its config from the template at start-up: conf.d must be writable on a read-only root filesystem
+          volumeMounts: [{ name: tmp, mountPath: /tmp }, { name: conf, mountPath: /etc/nginx/conf.d }]
+      volumes: [{ name: tmp, emptyDir: {} }, { name: conf, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: {{ .Release.Name }}-web }
+spec:
+  selector: { app.kubernetes.io/name: sentinelmesh-web, app.kubernetes.io/instance: {{ .Release.Name }} }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: {{ .Release.Name }}-analytics, labels: { app.kubernetes.io/name: sentinelmesh-analytics, app.kubernetes.io/instance: {{ .Release.Name }} } }
+spec:
+  replicas: {{ .Values.replicaCount.analytics }}
+  selector: { matchLabels: { app.kubernetes.io/name: sentinelmesh-analytics, app.kubernetes.io/instance: {{ .Release.Name }} } }
+  template:
+    metadata: { labels: { app.kubernetes.io/name: sentinelmesh-analytics, app.kubernetes.io/instance: {{ .Release.Name }} } }
+    spec:
+      securityContext: {{ $podSec | toJson }}
+      containers:
+        - name: analytics
+          image: "{{ .Values.images.analytics.repository }}:{{ .Values.images.analytics.tag }}"
+          securityContext: {{ $ctrSec | toJson }}
+          ports: [{ name: http, containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /healthz, port: http } }
+          resources: {{ .Values.resources.analytics | toJson }}
+---
+apiVersion: v1
+kind: Service
+metadata: { name: {{ .Release.Name }}-analytics }
+spec:
+  selector: { app.kubernetes.io/name: sentinelmesh-analytics, app.kubernetes.io/instance: {{ .Release.Name }} }
+  ports: [{ name: http, port: 8000, targetPort: http }]
+---
+# Only the web tier and the ingress controller may reach the API; the API alone reaches analytics.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: {{ .Release.Name }}-analytics-from-api }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: sentinelmesh-analytics, app.kubernetes.io/instance: {{ .Release.Name }} } }
+  policyTypes: [Ingress]
+  ingress: [{ from: [{ podSelector: { matchLabels: { app.kubernetes.io/name: sentinelmesh-api, app.kubernetes.io/instance: {{ .Release.Name }} } } }] }]
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}
+  annotations: { nginx.ingress.kubernetes.io/ssl-redirect: "true" }
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tlsSecretName }}
+  tls: [{ hosts: [{{ .Values.ingress.host | quote }}], secretName: {{ .Values.ingress.tlsSecretName }} }]
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - { path: /api, pathType: Prefix, backend: { service: { name: {{ .Release.Name }}-api, port: { number: 3000 } } } }
+          - { path: /, pathType: Prefix, backend: { service: { name: {{ .Release.Name }}-web, port: { number: 80 } } } }
+{{- end }}
+{{- if .Values.migration.enabled }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-migrate
+  annotations: { "helm.sh/hook": "pre-install,pre-upgrade", "helm.sh/hook-weight": "-5", "helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded" }
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext: {{ $podSec | toJson }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.images.api.repository }}:{{ .Values.images.api.tag }}"
+          command: ["node", "db/migrate.js"]
+          securityContext: {{ $ctrSec | toJson }}
+          envFrom: [{ secretRef: { name: {{ $sec }} } }]
+{{- end }}

@@ -41,7 +41,7 @@ p { margin: 0; }
 .rail { background: var(--rail); color: var(--rail-ink); display: flex; flex-direction: column; padding: 18px 12px; gap: 4px; position: sticky; top: 0; height: 100vh; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; font-weight: 700; font-size: 17px; letter-spacing: -0.02em; }
 .brand svg { flex: none; }
-.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; }
 @media (max-width: 820px) { .nav { flex-wrap: nowrap !important; overflow-x: auto; width: 100%; order: 3; scrollbar-width: thin; } .nav a { white-space: nowrap; } }
 .nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; text-decoration: none; color: var(--rail-muted); font-weight: 500; }
 .nav a:hover { color: var(--rail-ink); background: #ffffff0d; }

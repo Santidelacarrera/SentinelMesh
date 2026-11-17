@@ -1,0 +1,28 @@
+# Defaults are safe-by-default and deliberately incomplete: you MUST provide images, an existing Secret and external state services.
+# Nothing here creates cloud resources or costs; PostgreSQL, Redis and object storage are YOURS (managed services recommended).
+images:
+  api: { repository: sentinelmesh-api, tag: "0.1.0" }
+  web: { repository: sentinelmesh-web, tag: "0.1.0" }
+  analytics: { repository: sentinelmesh-analytics, tag: "0.1.0" }
+replicaCount: { api: 2, web: 2, analytics: 1 }
+secrets:
+  # Name of an existing Kubernetes Secret (create it with your secret manager / external-secrets). Required keys:
+  #   DATABASE_URL, DATABASE_ADMIN_URL, REDIS_URL, SECRETS_ENCRYPTION_KEY, APPROVAL_SIGNING_KEY (or KMS/Ed25519 keys),
+  #   PLATFORM_ADMIN_EMAIL, PLATFORM_ADMIN_PASSWORD, METRICS_TOKEN
+  existingSecret: ""
+config:
+  OBJECT_STORE_BUCKET: ""
+  AWS_REGION: us-east-1
+  AUTH_ALLOW_API_KEYS: "0"
+  DEFAULT_PLAN: business
+  CORS_ORIGINS: ""
+ingress:
+  enabled: false
+  className: ""
+  host: sentinelmesh.example.com
+  tlsSecretName: ""          # TLS is required in production: terminate at the ingress with a real certificate
+migration: { enabled: true } # runs `node db/migrate.js` as a pre-install/pre-upgrade hook
+resources:
+  api: { requests: { cpu: 250m, memory: 512Mi }, limits: { cpu: "1", memory: 1Gi } }
+  web: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 200m, memory: 128Mi } }
+  analytics: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }

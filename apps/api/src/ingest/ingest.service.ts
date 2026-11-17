@@ -7,6 +7,7 @@ import { AnalyticsClient } from '../analytics/analytics.client';
 import { OBJECT_STORAGE, ObjectStorage } from '../storage/object-storage';
 import { AuditTrail } from '../audit/audit-trail';
 import { newId, now, sha256 } from '../common/ids';
+import { EventBus } from '../common/events';
 
 export const IngestSchema = z.object({
   format: z.enum(['sarif', 'trivy', 'semgrep', 'zap', 'secrets']),
@@ -23,7 +24,7 @@ const SEV: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
 
 @Injectable()
 export class IngestService {
-  constructor(private db: Db, private analytics: AnalyticsClient, @Inject(OBJECT_STORAGE) private storage: ObjectStorage, private audit: AuditTrail) {}
+  constructor(private db: Db, private analytics: AnalyticsClient, @Inject(OBJECT_STORAGE) private storage: ObjectStorage, private audit: AuditTrail, private bus: EventBus) {}
 
   async upsertAsset(orgId: string, a: z.infer<typeof AssetSchema>): Promise<AssetContext> {
     const ex = (await this.db.assets.where(orgId, { name: a.name }))[0];
@@ -58,7 +59,8 @@ export class IngestService {
       if (raw.kind === 'secret' && !c.suppressed) {
         const cred: CredentialRecord = { id: newId('cred'), orgId, name: raw.title, service: raw.assetName ?? 'unknown', kind: 'api_key', currentVersion: 1, maskedValue: raw.maskedSecret!, status: 'exposed' };
         await this.db.credentials.put(cred);
-        await this.db.findings.update(orgId, row.id, { credentialId: cred.id });
+        const withCred = await this.db.findings.update(orgId, row.id, { credentialId: cred.id });
+        await this.bus.emit({ type: 'finding', orgId, actor, entity: withCred });
       }
       if (c.suppressed) result.suppressed++; else result.created++;
     }

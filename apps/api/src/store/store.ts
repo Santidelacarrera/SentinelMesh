@@ -5,6 +5,8 @@
 export interface Row { id: string; orgId: string }
 
 export class UniqueConflict extends Error {}
+/** Thrown when a row does not exist in the caller's organisation (other tenants' ids look exactly like missing ones). Mapped to HTTP 404. */
+export class RowNotFound extends Error {}
 
 export interface Repo<T extends Row> {
   /** Upsert by id. */
@@ -21,6 +23,8 @@ export interface Repo<T extends Row> {
   update(orgId: string, id: string, fn: Partial<T> | ((r: T) => void)): Promise<T>;
   /** Insert unless a row matching `unique` already exists; returns whichever row is stored and whether this call created it. */
   createUnique(row: T, unique: Partial<Record<string, unknown>>): Promise<{ row: T; created: boolean }>;
+  /** Hard delete (retention / erasure only). Tables that must stay append-only forbid it in the database. */
+  remove(orgId: string, id: string): Promise<boolean>;
 }
 
 const matches = (r: object, m: Partial<Record<string, unknown>>) => Object.entries(m).every(([k, v]) => (r as Record<string, unknown>)[k] === v);
@@ -31,9 +35,10 @@ export class MemoryRepo<T extends Row> implements Repo<T> {
   async get(orgId: string, id: string) { const r = this.rows.get(id); return r && r.orgId === orgId ? structuredClone(r) : undefined; }
   async list(orgId: string, pred: (r: T) => boolean = () => true) { return [...this.rows.values()].filter((r) => r.orgId === orgId && pred(r)).map((r) => structuredClone(r)); }
   async where(orgId: string, m: Partial<Record<string, unknown>>) { return this.list(orgId, (r) => matches(r, m)); }
+  async remove(orgId: string, id: string) { const r = this.rows.get(id); if (!r || r.orgId !== orgId) return false; return this.rows.delete(id); }
   async update(orgId: string, id: string, fn: Partial<T> | ((r: T) => void)) {
     const cur = this.rows.get(id);
-    if (!cur || cur.orgId !== orgId) throw new Error(`not found: ${id}`);
+    if (!cur || cur.orgId !== orgId) throw new RowNotFound(`not found: ${id}`);
     const draft = structuredClone(cur);               // throw inside fn ⇒ nothing is applied (same as a rolled-back transaction)
     if (typeof fn === 'function') fn(draft); else Object.assign(draft, fn);
     this.rows.set(id, draft);

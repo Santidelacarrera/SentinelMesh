@@ -12,12 +12,19 @@ import { WorkflowEngine } from '../src/workflow/engine';
 import { OBJECT_STORAGE, MemoryObjectStorage } from '../src/storage/object-storage';
 import { AuthService } from '../src/auth/auth';
 import { EXECUTION_LOCK, MemoryLock } from '../src/workflow/lock';
+import { AccountsService } from '../src/auth/accounts.service';
+import { DNS_RESOLVER, TLS_PROBE, DnsResolver, TlsProbe } from '../src/ctem/ctem.service';
+import { MAILER, Mailer } from '../src/notifications/notifications.service';
 
 process.env.HEALTH_RETRY_MS = '0';
 delete process.env.ANALYTICS_URL;
 
-export async function boot() {
-  const mod = await Test.createTestingModule({ imports: [AppModule] })
+export async function boot(o: { dns?: DnsResolver; tls?: TlsProbe; mailer?: Mailer } = {}) {
+  let b = Test.createTestingModule({ imports: [AppModule] });
+  if (o.dns) b = b.overrideProvider(DNS_RESOLVER).useValue(o.dns);
+  if (o.tls) b = b.overrideProvider(TLS_PROBE).useValue(o.tls);
+  if (o.mailer) b = b.overrideProvider(MAILER).useValue(o.mailer);
+  const mod = await b
     .overrideProvider(JOB_QUEUE).useValue(new MemoryQueue(4, 0))
     .overrideProvider(EXECUTION_LOCK).useValue(new MemoryLock())
     .overrideProvider(OBJECT_STORAGE).useValue(new MemoryObjectStorage())
@@ -36,8 +43,11 @@ export async function boot() {
     app, http, as, analyst: as('dev-analyst'), approver: as('dev-approver'), viewer: as('dev-viewer'), other: as('other-org-analyst'),
     queue: mod.get<MemoryQueue>(JOB_QUEUE),
     secrets: mod.get<SimulatedSecrets>(PORTS.SECRETS), health: mod.get<SimulatedHealth>(PORTS.HEALTH), infra: mod.get<SimulatedInfra>(PORTS.INFRA),
-    db: mod.get(Db), audit: mod.get(AuditTrail), engine: mod.get(WorkflowEngine), storage: mod.get<MemoryObjectStorage>(OBJECT_STORAGE),
+    acc: mod.get(AccountsService), db: mod.get(Db), audit: mod.get(AuditTrail), engine: mod.get(WorkflowEngine), storage: mod.get<MemoryObjectStorage>(OBJECT_STORAGE),
   };
 }
 export type Env = Awaited<ReturnType<typeof boot>>;
 export const ORG = 'org_acme';
+
+/** Strong password used by tests (satisfies the policy). */
+export const PW = 'Correct-Horse-9-Battery';

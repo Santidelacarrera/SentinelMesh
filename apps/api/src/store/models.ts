@@ -1,4 +1,4 @@
-export type SecOpsRole = 'viewer' | 'analyst' | 'approver' | 'admin';
+export type SecOpsRole = 'viewer' | 'analyst' | 'approver' | 'admin' | 'platform_admin';
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
 
 export interface Org { id: string; name: string }

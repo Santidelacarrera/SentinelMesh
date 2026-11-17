@@ -1,0 +1,12 @@
+# Reviewed false positives of the generic-api-key rule, limited to these locations:
+#  - test fixtures with obviously fake values ("token=..." inside redaction tests, fixture passwords)
+#  - .env.example: keys are intentionally empty placeholders
+#  - connectors/idp.ts: a code expression ("authMethods: ... ? [...]"), not a credential
+[extend]
+useDefault = true
+
+# Legacy [allowlist] syntax: understood by every gitleaks release (the [[allowlists]] form needs >= 8.25).
+# Scope is limited to the three reviewed locations; the rest of the repository is scanned in full.
+[allowlist]
+description = "Reviewed false positives"
+paths = ['''^apps/api/test/''', '''^\.env\.example$''', '''^apps/api/src/connectors/idp\.ts$''']

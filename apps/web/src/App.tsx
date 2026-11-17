@@ -9,6 +9,8 @@ import { Incidents } from './views/Incidents';
 import { Identity } from './views/Identity';
 import { Credentials } from './views/Credentials';
 import { Audit } from './views/Audit';
+import { Admin } from './admin';
+import { Cases, Ctem, Executive, Iam, Integrations, Reports, Soar } from './ent';
 
 const Logo = ({ size = 28 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
@@ -17,12 +19,21 @@ const Logo = ({ size = 28 }: { size?: number }) => (
   </svg>
 );
 
-const NAV: Array<[string, string]> = [['resumen', 'Resumen'], ['hallazgos', 'Hallazgos'], ['decisiones', 'Decisiones'], ['ejecuciones', 'Ejecuciones'], ['incidentes', 'Incidentes'], ['identidades', 'Identidades'], ['credenciales', 'Credenciales'], ['auditoria', 'Auditoría']];
+const NAV: Array<[string, string]> = [['ejecutivo', 'Ejecutiva'], ['ctem', 'CTEM'], ['iam', 'IAM'], ['soar', 'SOAR'], ['casos', 'Casos'], ['integraciones', 'Integraciones'], ['informes', 'Informes'], ['admin', 'Administración'], ['resumen', 'Resumen'], ['hallazgos', 'Hallazgos'], ['decisiones', 'Decisiones'], ['ejecuciones', 'Ejecuciones'], ['incidentes', 'Incidentes'], ['identidades', 'Identidades'], ['credenciales', 'Credenciales'], ['auditoria', 'Auditoría']];
 
-function Login({ onKey, error }: { onKey: (k: string) => void; error?: string }) {
-  return <div className="login"><form onSubmit={(e) => { e.preventDefault(); onKey(String(new FormData(e.currentTarget).get('k')).trim()); }}>
+function Login({ onKey, error }: { onKey: (k: string, refresh?: string) => void; error?: string }) {
+  const [msg, setMsg] = useState('');
+  const userLogin = async (f: FormData) => {
+    setMsg('');
+    const r = await fetch('/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ org: String(f.get('org')), email: String(f.get('email')), password: String(f.get('pw')), ...(f.get('totp') ? { totp: String(f.get('totp')) } : {}) }) }).catch(() => undefined);
+    if (!r?.ok) return setMsg('Credenciales no válidas, cuenta bloqueada o MFA incorrecto.');
+    const j = (await r.json()) as { accessToken: string; refreshToken: string }; onKey(j.accessToken, j.refreshToken);
+  };
+  return <div className="login"><form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); if (f.get('email')) void userLogin(f); else onKey(String(f.get('k')).trim()); }}>
     <h1><Logo size={36} /> SentinelMesh</h1><p className="muted">Consola de exposición, identidades y respuesta. Cada cambio destructivo requiere una firma humana.</p>
-    <label className="field"><span>Clave de acceso</span><input name="k" type="password" autoComplete="off" autoFocus required /></label>
+    <label className="field"><span>Clave de acceso (API)</span><input name="k" type="password" autoComplete="off" /></label>
+    <details><summary className="muted">o entra con usuario</summary><div className="stack" style={{ gap: 10, marginTop: 10 }}><label className="field"><span>Organización</span><input name="org" type="text" autoComplete="organization" /></label><label className="field"><span>Correo</span><input name="email" type="text" autoComplete="username" /></label><label className="field"><span>Contraseña</span><input name="pw" type="password" autoComplete="current-password" /></label><label className="field"><span>Código MFA (si lo tienes)</span><input name="totp" type="text" inputMode="numeric" /></label></div></details>
+    {msg && <p role="alert" style={{ color: 'var(--risk)' }}>{msg}</p>}
     {error && <p role="alert" style={{ color: 'var(--risk)' }}>{error}</p>}
     <button className="btn primary">Entrar</button>
     {import.meta.env.DEV && <p className="muted">Entorno de desarrollo: prueba dev-viewer, dev-analyst o dev-approver.</p>}</form></div>;
@@ -32,9 +43,10 @@ export function App() {
   const [key, setKey] = useState(() => { try { return sessionStorage.getItem('sm_key') ?? ''; } catch { return ''; } });
   const [who, setWho] = useState<{ key: string; me: Me }>(), [error, setError] = useState<string>();
   const me = who?.key === key ? who.me : undefined;      // a stale identity from a previous key is never shown
-  const api = useMemo(() => new Api(key), [key]);
+  const [refresh, setRefresh] = useState(() => { try { return sessionStorage.getItem('sm_refresh') ?? ''; } catch { return ''; } });
+  const api = useMemo(() => new Api(key, '/api/v1', refresh, (t) => { try { sessionStorage.setItem('sm_key', t.accessToken); sessionStorage.setItem('sm_refresh', t.refreshToken); } catch { /* private mode */ } setRefresh(t.refreshToken); }), [key, refresh]);
   useEffect(() => { if (!key) return; api.get<Me>('/me').then((m) => setWho({ key, me: m })).catch((e: Error) => { setError(e.message); setKey(''); try { sessionStorage.removeItem('sm_key'); } catch { /* private mode */ } }); }, [api, key]);
-  const signIn = (k: string) => { setError(undefined); try { sessionStorage.setItem('sm_key', k); } catch { /* private mode */ } setKey(k); };
+  const signIn = (k: string, r = '') => { setError(undefined); try { sessionStorage.setItem('sm_key', k); sessionStorage.setItem('sm_refresh', r); } catch { /* private mode */ } setRefresh(r); setKey(k); };
   const signOut = () => { try { sessionStorage.removeItem('sm_key'); } catch { /* ignore */ } setKey(''); };
   if (!key) return <Login onKey={signIn} error={error} />;
   if (!me) return <div className="login"><div className="skel" style={{ width: 220 }} aria-busy="true" aria-label="Entrando" /></div>;
@@ -58,6 +70,14 @@ function Frame({ route }: { route: ReturnType<typeof useRoute> }) {
   useEffect(() => { document.title = `${count ? `(${count}) ` : ''}SentinelMesh`; }, [count]);
   let view: ReactNode;
   switch (route.name) {
+    case 'ejecutivo': view = <Executive />; break;
+    case 'ctem': view = <Ctem />; break;
+    case 'iam': view = <Iam />; break;
+    case 'soar': view = <Soar />; break;
+    case 'casos': view = <Cases id={route.id} />; break;
+    case 'integraciones': view = <Integrations />; break;
+    case 'informes': view = <Reports />; break;
+    case 'admin': view = <Admin />; break;
     case 'hallazgos': view = <Findings id={route.id} query={route.query} />; break;
     case 'decisiones': view = <Decisions id={route.id} />; break;
     case 'ejecuciones': view = <Executions id={route.id} />; break;

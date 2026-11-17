@@ -1,0 +1,37 @@
+# Prometheus alerting rules for the metrics SentinelMesh exposes at /metrics (see docs/DEPLOYMENT.md).
+# Thresholds are starting points, not tuned values: adjust them after observing your own baseline.
+groups:
+  - name: sentinelmesh
+    rules:
+      - alert: SentinelMeshDown
+        expr: absent(sentinel_uptime_seconds) or up{job="sentinelmesh-api"} == 0
+        for: 3m
+        labels: { severity: critical }
+        annotations: { summary: "SentinelMesh API is not scraped / down", runbook: "docs/DEPLOYMENT.md#operación" }
+      - alert: SentinelMeshHighErrorRate
+        expr: sum(rate(sentinel_http_requests_total{status="5xx"}[5m])) / clamp_min(sum(rate(sentinel_http_requests_total[5m])), 1) > 0.05
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "More than 5% of API requests fail with 5xx" }
+      - alert: SentinelMeshSlowRequests
+        expr: histogram_quantile(0.95, sum by (le) (rate(sentinel_http_request_duration_seconds_bucket[5m]))) > 2
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "p95 latency above 2 s (check database and list endpoints)" }
+      - alert: SentinelMeshQueueBlocked
+        expr: sentinel_queue_failed > 0 or sentinel_queue_waiting > 100
+        for: 10m
+        labels: { severity: critical }
+        annotations: { summary: "Workflow queue has failed jobs or a backlog" }
+      - alert: SentinelMeshConnectorSyncFailing
+        expr: increase(sentinel_connector_sync_failures_total[1h]) > 3
+        labels: { severity: warning }
+        annotations: { summary: "Connector {{ $labels.kind }} failed to synchronise more than 3 times in an hour" }
+      - alert: SentinelMeshAuthAttackSuspected
+        expr: sum(increase(sentinel_auth_failures_total[10m])) > 50
+        labels: { severity: warning }
+        annotations: { summary: "More than 50 failed logins in 10 minutes" }
+      - alert: SentinelMeshNotificationsFailing
+        expr: sum(increase(sentinel_notifications_total{status="failed"}[1h])) > 5
+        labels: { severity: warning }
+        annotations: { summary: "Notifications are failing to deliver" }
