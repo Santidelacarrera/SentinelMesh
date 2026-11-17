@@ -41,7 +41,7 @@ export class EvidenceService {
     return this.meta(e);
   }
   private meta(e: Evidence) { const { objectKey: _internal, ...rest } = e; return rest; }
-  async list(orgId: string, caseId: string) { return (await this.db.evidence.where(orgId, { caseId })).map((e) => ({ id: e.id, name: e.name, type: e.type, source: e.source, sha256: e.sha256, size: e.size, capturedAt: e.capturedAt, capturedBy: e.capturedBy })); }
+  async list(orgId: string, caseId: string) { await this.cases.get(orgId, caseId); return (await this.db.evidence.where(orgId, { caseId })).map((e) => ({ id: e.id, name: e.name, type: e.type, source: e.source, sha256: e.sha256, size: e.size, capturedAt: e.capturedAt, capturedBy: e.capturedBy })); }
   private async load(orgId: string, id: string) { const e = await this.db.evidence.get(orgId, id); if (!e) throw new NotFoundException('evidence not found'); return e; }
 
   /** Metadata + custody log. Viewing is itself recorded. */

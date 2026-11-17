@@ -8,6 +8,8 @@
     "dev": "ts-node src/main.ts",
     "test": "jest --runInBand --forceExit",
     "simulate": "ts-node scripts/simulate-incident.ts",
+    "perf": "ts-node scripts/perf.ts",
+    "demo:enterprise": "ts-node scripts/demo-enterprise.ts",
     "demo": "ts-node scripts/demo-server.ts",
     "db:migrate": "ts-node scripts/migrate.ts",
     "test:coverage": "jest --runInBand --forceExit --coverage --collectCoverageFrom='src/**/*.ts' --coverageReporters=text-summary"
