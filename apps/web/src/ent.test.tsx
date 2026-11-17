@@ -75,3 +75,15 @@ describe('other views: states and permissions', () => {
     expect(await screen.findByText('Aún no hay informes.')).toBeTruthy(); expect(screen.queryByText('Generar PDF')).toBeNull();
   });
 });
+
+describe('admin view', () => {
+  it('is closed to non-administrators and shows users with safe self-protection for admins', async () => {
+    const { Admin } = await import('./admin');
+    const { unmount } = render(ui(withApi({ '/plan': { plan: 'business', features: [], limits: {} } }, 'analyst'), <Admin />));
+    expect(await screen.findByText('Solo administradores')).toBeTruthy(); unmount();
+    const users = [{ id: 'u', email: 'a@b.test', role: 'admin', status: 'active', mfaEnabled: true, createdAt: '' }, { id: 'v', email: 'v@b.test', role: 'viewer', status: 'active', mfaEnabled: false, createdAt: '' }];
+    render(ui(withApi({ '/users': users, '/roles': [], '/plan': { plan: 'enterprise', features: ['soar'], limits: { assets: null } }, '/ops/health': { status: 'ok', issues: [], queue: { waiting: 0, failed: 0 }, auditChain: { ok: true } } }, 'admin'), <Admin />));
+    expect(await screen.findByText('v@b.test')).toBeTruthy();
+    const off = screen.getAllByText('Deshabilitar') as HTMLButtonElement[]; expect(off[0].disabled).toBe(true); expect(off[1].disabled).toBe(false);   // you cannot disable yourself
+  });
+});

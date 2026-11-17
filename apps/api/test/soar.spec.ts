@@ -39,6 +39,13 @@ describe('SOAR playbooks — ASSISTED (default)', () => {
     expect((await t.analyst.post('/api/v1/soar/trigger', { type: 'signal', entityId: (await t.db.signals.list('org_acme'))[0].id }).expect(200)).body.runs).toBe(0);
     expect(r.steps.filter((x: any) => x.status === 'awaiting_approval')).toHaveLength(1); expect(await pending()).toHaveLength(1);
   });
+  it('several detections on the same host while one is awaiting approval attach to that run: one approval, not one per alert', async () => {
+    await setup();
+    await t.analyst.post('/api/v1/signals', { signals: [edrSignal(), edrSignal({ title: 'Second detection' }), edrSignal({ source: 'defender', title: 'Third detection' })] }).expect(201);
+    const all = (await runs()).filter((r) => r.playbookKey === 'endpoint-compromised'); expect(all).toHaveLength(1); expect(await pending()).toHaveLength(1);
+    const full = (await t.viewer.get(`/api/v1/soar/runs/${all[0].id}`)).body.run; expect(full.evidence).toHaveLength(3); expect(full.history.map((h: any) => h.text).join('|')).toMatch(/attached to this run/);
+    await t.analyst.post('/api/v1/signals', { signals: [edrSignal({ host: 'other-host' })] }); expect((await runs()).filter((r) => r.playbookKey === 'endpoint-compromised')).toHaveLength(2);   // a different host is a different subject
+  });
   it('separation of duties: whoever caused the run cannot approve it; another approver can', async () => {
     await setup();
     await t.approver.post('/api/v1/signals', { signals: [edrSignal()] }).expect(201);                              // the approver triggers it (signals:write is allowed to approvers)

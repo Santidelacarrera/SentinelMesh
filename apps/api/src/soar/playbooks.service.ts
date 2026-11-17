@@ -204,13 +204,18 @@ export class PlaybooksService implements OnModuleInit {
   }
 
   private async start(orgId: string, pb: Playbook, a: AutomationSettings, type: TriggerType, refId: string, entity: Record<string, any>, requestedBy: string) {
+    const groupKey = typeof entity['host'] === 'string' && entity['host'] ? `host:${entity['host']}` : undefined;
+    if (groupKey) {
+      const open = (await this.db.runs.where(orgId, { playbookKey: pb.key, groupKey, status: 'awaiting_approval' }))[0];
+      if (open) { await this.db.runs.update(orgId, open.id, (r) => { if (!r.evidence.includes(`${type}:${refId}`)) r.evidence.push(`${type}:${refId}`); r.history.push({ at: now(), text: `further ${type} ${refId} for ${groupKey} attached to this run (no duplicate approval opened)` }); r.updatedAt = now(); }); return open; }
+    }
     const mode = this.effectiveMode(pb, a), ctx = { trigger: entity }, runId = newId('run');
     const steps: RunStep[] = pb.actions.map((x, index) => {
       const params = render(x.params, ctx) as Record<string, unknown>, idempotencyKey = `${runId}:${index}`;
       return { index, action: x.type, params, risky: !SAFE_ACTIONS.has(x.type), status: 'planned', idempotencyKey, planHash: sha256(stableStringify({ runId, index, action: x.type, params })) };
     });
     const t = now();
-    const run: PlaybookRun = { id: runId, orgId, playbookId: pb.id, playbookKey: pb.key, playbookVersion: pb.version, mode: pb.mode, effectiveMode: mode, trigger: { type, refId }, dedupKey: `${pb.key}:${type}:${refId}`, requestedBy, evidence: [`${type}:${refId}`],
+    const run: PlaybookRun = { id: runId, orgId, playbookId: pb.id, playbookKey: pb.key, playbookVersion: pb.version, mode: pb.mode, effectiveMode: mode, trigger: { type, refId }, dedupKey: `${pb.key}:${type}:${refId}`, groupKey, requestedBy, evidence: [`${type}:${refId}`],
       steps, status: 'executing', createdAt: t, updatedAt: t, history: [{ at: t, text: `triggered by ${type} ${refId}; mode ${mode}${mode !== pb.mode ? ` (playbook asks for ${pb.mode}${a.killSwitch ? ', kill switch engaged' : ''})` : ''}` }] };
     const { row, created } = await this.db.runs.createUnique(run, { dedupKey: run.dedupKey });
     if (!created) return row;                                               // idempotent: the same entity never fires the same playbook twice

@@ -105,6 +105,8 @@ export interface PlaybookRun {
   id: string; orgId: string; playbookId: string; playbookKey: string; playbookVersion: number; mode: AutomationMode; effectiveMode: AutomationMode; trigger: { type: TriggerType; refId: string };
   /** `${playbookKey}:${type}:${refId}` — one run per playbook per triggering entity. */
   dedupKey: string; requestedBy: string;
+  /** Entities that describe the same subject (e.g. the same host) share a group: while a run of the playbook for that group waits for approval, new events are attached to it instead of opening another one. */
+  groupKey?: string;
   evidence: string[]; steps: RunStep[]; status: 'observed' | 'awaiting_approval' | 'executing' | 'completed' | 'failed' | 'rejected' | 'stopped' | 'skipped'; reason?: string; createdAt: string; updatedAt: string; history: Array<{ at: string; text: string }>;
 }
 /** Effect recorded by the lab executor (the only executor shipped): proves the path end-to-end without touching real systems. */

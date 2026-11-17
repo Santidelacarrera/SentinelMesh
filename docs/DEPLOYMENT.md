@@ -5,11 +5,13 @@ No se despliega nada ni se generan costes sin autorización expresa: todo lo sig
 ## Artefactos
 | Qué | Dónde | Verificado |
 |---|---|---|
-| Imágenes | `apps/api/Dockerfile`, `apps/web/Dockerfile` (nginx sin root), `services/analytics/Dockerfile` | **ninguna imagen se construyó en esta sesión** (se construyen y escanean en `security.yml`); la web y su plantilla nginx son nuevas y sin probar |
+| Imágenes | `apps/api/Dockerfile`, `apps/web/Dockerfile` (nginx sin root), `services/analytics/Dockerfile` | **las 3 imágenes se construyeron y ejecutaron localmente** (API 448 MB, web 75 MB, analítica 252 MB): la API arrancó en `NODE_ENV=production` contra PostgreSQL 16, Redis 7 y un S3 emulado (moto) con logs JSON, `/readyz` OK, migraciones desde la imagen, y también con `--read-only --cap-drop ALL`; la web (nginx sin root, `--read-only`) sirvió la consola y proxeó `/api`; se inició sesión de usuario desde el navegador. **No** se escanearon con Trivy ni se desplegaron en Kubernetes |
 | Docker Compose (laboratorio) | `docker-compose.yml` | sin ejecutar en esta sesión (PostgreSQL 16 y Redis 7 se levantaron con `docker run` para las pruebas) |
 | Helm | `deploy/helm/sentinelmesh` | `helm lint --strict`, `helm template` |
 | Migraciones | `db/migrate.js` (Job *pre-install/pre-upgrade*) | probadas en PostgreSQL 16 real en dos órdenes: migrar → roles → migrar, y roles → migrar |
 | CI | `.github/workflows/{ci,security,release}.yml` | no ejecutados aquí (requieren GitHub Actions) |
+
+> Con Docker puro y sistema de archivos de solo lectura, la web necesita `--tmpfs /etc/nginx/conf.d:uid=101,gid=101` (nginx renderiza ahí su configuración); en Kubernetes el `emptyDir` del chart ya es escribible.
 
 ## Helm
 ```bash

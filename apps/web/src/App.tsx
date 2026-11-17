@@ -9,6 +9,7 @@ import { Incidents } from './views/Incidents';
 import { Identity } from './views/Identity';
 import { Credentials } from './views/Credentials';
 import { Audit } from './views/Audit';
+import { Admin } from './admin';
 import { Cases, Ctem, Executive, Iam, Integrations, Reports, Soar } from './ent';
 
 const Logo = ({ size = 28 }: { size?: number }) => (
@@ -18,7 +19,7 @@ const Logo = ({ size = 28 }: { size?: number }) => (
   </svg>
 );
 
-const NAV: Array<[string, string]> = [['ejecutivo', 'Ejecutiva'], ['ctem', 'CTEM'], ['iam', 'IAM'], ['soar', 'SOAR'], ['casos', 'Casos'], ['integraciones', 'Integraciones'], ['informes', 'Informes'], ['resumen', 'Resumen'], ['hallazgos', 'Hallazgos'], ['decisiones', 'Decisiones'], ['ejecuciones', 'Ejecuciones'], ['incidentes', 'Incidentes'], ['identidades', 'Identidades'], ['credenciales', 'Credenciales'], ['auditoria', 'Auditoría']];
+const NAV: Array<[string, string]> = [['ejecutivo', 'Ejecutiva'], ['ctem', 'CTEM'], ['iam', 'IAM'], ['soar', 'SOAR'], ['casos', 'Casos'], ['integraciones', 'Integraciones'], ['informes', 'Informes'], ['admin', 'Administración'], ['resumen', 'Resumen'], ['hallazgos', 'Hallazgos'], ['decisiones', 'Decisiones'], ['ejecuciones', 'Ejecuciones'], ['incidentes', 'Incidentes'], ['identidades', 'Identidades'], ['credenciales', 'Credenciales'], ['auditoria', 'Auditoría']];
 
 function Login({ onKey, error }: { onKey: (k: string, refresh?: string) => void; error?: string }) {
   const [msg, setMsg] = useState('');
@@ -76,6 +77,7 @@ function Frame({ route }: { route: ReturnType<typeof useRoute> }) {
     case 'casos': view = <Cases id={route.id} />; break;
     case 'integraciones': view = <Integrations />; break;
     case 'informes': view = <Reports />; break;
+    case 'admin': view = <Admin />; break;
     case 'hallazgos': view = <Findings id={route.id} query={route.query} />; break;
     case 'decisiones': view = <Decisions id={route.id} />; break;
     case 'ejecuciones': view = <Executions id={route.id} />; break;
