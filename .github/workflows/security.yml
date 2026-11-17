@@ -29,14 +29,14 @@ jobs:
           docker build -f apps/web/Dockerfile -t sentinelmesh-web:ci .
           docker build -t sentinelmesh-analytics:ci services/analytics
       - name: Scan images (Trivy; high/critical with a fix available fail)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with: { image-ref: 'sentinelmesh-api:ci', severity: 'HIGH,CRITICAL', ignore-unfixed: true, exit-code: '1' }
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with: { image-ref: 'sentinelmesh-web:ci', severity: 'HIGH,CRITICAL', ignore-unfixed: true, exit-code: '1' }
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with: { image-ref: 'sentinelmesh-analytics:ci', severity: 'HIGH,CRITICAL', ignore-unfixed: true, exit-code: '1' }
       - name: Scan IaC (Dockerfiles, Helm, Terraform)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with: { scan-type: config, scan-ref: '.', severity: 'HIGH,CRITICAL', exit-code: '1' }
   helm:
     runs-on: ubuntu-latest

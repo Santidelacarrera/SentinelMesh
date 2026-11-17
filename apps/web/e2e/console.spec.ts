@@ -11,7 +11,7 @@ const hold = async (page: Page, name: RegExp, ms = 1500) => {
 
 test('rejects a bad key with a clear message', async ({ page }) => {
   await page.goto('/'); await page.getByLabel('Clave de acceso').fill('nope'); await page.getByRole('button', { name: 'Entrar' }).click();
-  await expect(page.getByRole('alert')).toContainText('no es válida');
+  await expect(page.getByRole('alert')).toContainText('no son válidas');
 });
 
 test('overview explains the situation in a sentence and maps exposure', async ({ page }) => {
