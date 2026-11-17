@@ -1,0 +1,12 @@
+# Reviewed false positives of the generic-api-key rule (the rule stays active everywhere else):
+#  - test fixtures with obviously fake values ("token=..." inside redaction tests, fixture passwords)
+#  - .env.example: keys are intentionally empty placeholders
+#  - connectors/idp.ts: a code expression ("authMethods: ... ? [...]"), not a credential
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Reviewed generic-api-key false positives"
+targetRules = ["generic-api-key"]
+condition = "OR"
+paths = ['''^apps/api/test/''', '''^\.env\.example$''', '''^apps/api/src/connectors/idp\.ts$''']

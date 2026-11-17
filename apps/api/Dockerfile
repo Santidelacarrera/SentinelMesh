@@ -12,6 +12,8 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
 RUN npm ci -w apps/api --include-workspace-root --omit=dev
+# the runtime never needs npm; its bundled dependencies only add scanner findings
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 COPY --from=build /repo/apps/api/dist apps/api/dist
 COPY db db
 USER node
