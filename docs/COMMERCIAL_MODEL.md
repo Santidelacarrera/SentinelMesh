@@ -21,7 +21,7 @@ Límites ilustrativos por plan: activos, usuarios, conectores, eventos/día (`PL
 | Pieza | Estado |
 |---|---|
 | **Control de funciones por plan** | **Implementado**: `Entitlements` + `@Feature` en cada controlador; plan por organización (`org_profile`), cambio por administrador de plataforma |
-| **Límites de uso** | **Parcial**: activos, usuarios y conectores se comprueban al crear; `eventsPerDay` está definido pero **no se aplica** |
+| **Límites de uso** | **Parcial**: activos, usuarios y conectores se comprueban al crear; `eventsPerDay` se aplica a la ingesta de señales con un contador **por réplica** (límite blando) |
 | Licenciamiento (claves firmadas, caducidad, modo sin conexión) | Propuesta: licencia JWT firmada por el proveedor con `plan`, `limits`, `exp`; verificación local; sin llamada de salida obligatoria para instalaciones dedicadas |
 | Suscripciones y renovaciones | Propuesta: pasarela de pago externa (Stripe u otra) fuera del producto; webhook → `PATCH /platform/orgs/{id}` (plan, estado). **No implementado; no se integra ningún pago** |
 | Facturación por uso | Propuesta: contador de eventos (señales) y activos por organización exportado mensualmente (`/privacy/export`-style, solo agregados). **No implementado** |

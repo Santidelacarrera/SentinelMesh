@@ -11,7 +11,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versión d
 - **Señales, correlación y casos**: deduplicación, correlación con confianza por razón, casos con línea de tiempo, evidencia con cadena de custodia y exportación.
 - **SOAR**: playbooks versionados, OBSERVE/ASSISTED/AUTOMATED (apagado por defecto), aprobación firmada ligada al paso, kill switch, ejecutor de laboratorio.
 - **Notificaciones** (email/Slack/Teams con confirmación del proveedor), **informes PDF** (ejecutivo, técnico, incidente, identidades), **dashboard ejecutivo**, **asistente de IA** con fuentes (LLM externo opt-in), **herramientas de privacidad** (exportación, retención, borrado).
-- **Operación**: `/metrics`, `/readyz`, salud por organización, CORS cerrado, límite de tasa de autenticación, HSTS.
+- **Operación**: `/metrics`, `/readyz`, salud por organización, CORS cerrado, límite de tasa de autenticación, HSTS, logs JSON con request-id (`LOG_FORMAT=json`), reglas de alerta Prometheus, retención programada, cuota diaria de eventos, re-cifrado tras rotar clave.
+- **Rendimiento**: correlación indexada (ingesta de señales 6,6× más rápida) y dashboard sin recálculos simultáneos.
 - **Consola**: vistas Ejecutiva, CTEM, IAM, SOAR, Casos, Integraciones e Informes; acceso con usuario/MFA y renovación de sesión.
 - **Datos**: migración `0002_enterprise` (27 tablas con RLS), runner versionado `db/migrate.js`.
 - **Entrega**: workflows `security.yml` y `release.yml`, imagen web, chart de Helm, `.env.example`, demo reproducible (`npm run demo:enterprise`), sonda de rendimiento.

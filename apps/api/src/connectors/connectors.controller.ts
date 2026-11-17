@@ -24,6 +24,9 @@ export class ConnectorsController {
   @Post('connectors') @HttpCode(201) @Perm('connectors:manage') @Feature('connectors')
   create(@Me() me: Principal, @Body() b: unknown) { return this.s.create(me, parse(ConnectorSchema, b)); }
 
+  @Post('connectors/reencrypt') @HttpCode(200) @Perm('connectors:manage') @Feature('connectors')
+  reencrypt(@Me() me: Principal) { return this.s.reencrypt(me); }
+
   @Get('connectors/:id') @Perm('connectors:read') @Feature('connectors')
   detail(@Me() me: Principal, @Param('id') id: string) { return this.s.detail(me.orgId, id); }
 

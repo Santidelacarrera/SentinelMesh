@@ -6,6 +6,7 @@ import { AuditTrail } from '../audit/audit-trail';
 import { newId, now, sha256 } from '../common/ids';
 import { redact } from '../common/mask';
 import { EventBus } from '../common/events';
+import { Entitlements } from '../platform/entitlements';
 import type { SignalInput } from '../connectors/types';
 
 export const SignalSchema = z.object({
@@ -21,10 +22,14 @@ export type SignalListener = (orgId: string, created: Signal[]) => Promise<void>
 export class SignalsService {
   private log = new Logger('Signals');
   private listeners: SignalListener[] = [];
-  constructor(private db: Db, private audit: AuditTrail, private bus: EventBus) {}
+    private quota = new Map<string, number>();   // events accepted today per organisation, per replica (a soft limit; the plan figure is a placeholder)
+  constructor(private db: Db, private audit: AuditTrail, private bus: EventBus, private ent: Entitlements) {}
   onCreated(l: SignalListener) { this.listeners.push(l); }
 
   async ingest(orgId: string, actor: string, inputs: SignalInput[]): Promise<{ created: number; duplicates: number; signals: Signal[] }> {
+    const day = new Date().toISOString().slice(0, 10), qk = `${orgId}:${day}`;
+    for (const k of this.quota.keys()) if (!k.endsWith(day)) this.quota.delete(k);
+    await this.ent.assertWithin(orgId, 'eventsPerDay', this.quota.get(qk) ?? 0);
     const [assets, identities] = await Promise.all([this.db.inventory.list(orgId), this.db.identities.list(orgId)]);
     const byHost = new Map<string, string>(), byIp = new Map<string, string>(), byUser = new Map<string, string>();
     for (const a of assets) { byHost.set(a.identifier.toLowerCase(), a.id); byHost.set(a.name.toLowerCase(), a.id); if (a.type === 'ip') byIp.set(a.identifier, a.id); for (const t of a.tags) { const m = /^public-ip:(.+)$/.exec(t); if (m) byIp.set(m[1], a.id); } }
@@ -38,6 +43,7 @@ export class SignalsService {
       const { row, created: isNew } = await this.db.signals.createUnique(sig, { dedupKey: sig.dedupKey });
       if (isNew) created.push(row); else dup++;
     }
+    this.quota.set(qk, (this.quota.get(qk) ?? 0) + created.length);
     if (created.length) {
       await this.audit.append(orgId, actor, 'signals.ingested', { count: created.length, duplicates: dup, sources: [...new Set(created.map((c) => c.source))] });
       for (const l of this.listeners) await l(orgId, created).catch((e) => this.log.error(`signal listener failed: ${(e as Error).message}`));

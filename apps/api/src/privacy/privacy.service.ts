@@ -1,10 +1,11 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { z } from 'zod';
 import { Db } from '../store/db';
 import { AuditTrail } from '../audit/audit-trail';
 import { AccountsService } from '../auth/accounts.service';
 import { newId, now, sha256 } from '../common/ids';
 import { Principal } from '../auth/auth';
+import { PLATFORM_ORG } from '../auth/rbac';
 
 export const RetentionSchema = z.object({ signalsDays: z.number().int().min(7).max(3650).optional(), notificationsDays: z.number().int().min(7).max(3650).optional(), sessionsDays: z.number().int().min(1).max(365).optional(), connectorRunsDays: z.number().int().min(7).max(3650).optional() }).strict();
 export const DEFAULT_RETENTION = { signalsDays: 365, notificationsDays: 180, sessionsDays: 30, connectorRunsDays: 90 };
@@ -16,8 +17,20 @@ const cutoff = (days: number) => new Date(Date.now() - days * 86400000).toISOStr
  * in the account record while the audit trail keeps the pseudonymous user id. This is tooling, not a compliance certification.
  */
 @Injectable()
-export class PrivacyService {
+export class PrivacyService implements OnModuleInit, OnApplicationShutdown {
+  private timer?: NodeJS.Timeout; private log = new Logger('Retention');
   constructor(private db: Db, private audit: AuditTrail, private acc: AccountsService) {}
+  /** RETENTION_JOB_INTERVAL_SEC > 0 runs the retention policy for every organisation (platform profiles + RETENTION_JOB_ORGS) on a timer. Off by default. */
+  onModuleInit() {
+    const every = Number(process.env.RETENTION_JOB_INTERVAL_SEC ?? 0); if (every <= 0) return;
+    this.timer = setInterval(() => void this.runAll(), every * 1000); this.timer.unref();
+  }
+  onApplicationShutdown() { if (this.timer) clearInterval(this.timer); }
+  async runAll() {
+    const orgs = new Set([...(await this.db.orgs.list(PLATFORM_ORG)).filter((o) => o.status === 'active').map((o) => o.id), ...(process.env.RETENTION_JOB_ORGS ?? '').split(',').filter(Boolean)]);
+    for (const orgId of orgs) await this.applyRetention({ orgId, userId: 'retention-job' }).catch((e) => this.log.warn(`retention for ${orgId} failed: ${(e as Error).message}`));
+    return orgs.size;
+  }
   async retention(orgId: string) { const s = (await this.db.settings.where(orgId, { key: 'retention' }))[0]; return { ...DEFAULT_RETENTION, ...((s?.value as object) ?? {}) }; }
   async setRetention(me: Principal, p: z.infer<typeof RetentionSchema>) {
     const next = { ...(await this.retention(me.orgId)), ...p }, ex = (await this.db.settings.where(me.orgId, { key: 'retention' }))[0];

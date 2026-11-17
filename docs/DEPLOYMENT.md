@@ -32,4 +32,4 @@ El chart falla si falta `secrets.existingSecret`. Los pods corren sin root, con 
 5. RPO/RTO: **no se prometen**; dependen de tu infraestructura.
 
 ## Operación
-`/healthz` (vida), `/readyz` (BD y cola), `/metrics` (con `METRICS_TOKEN`), `GET /api/v1/ops/health` (por organización: conectores caídos, tareas atascadas, cola, fallos de login/notificación). Trazas: se propagan `traceparent`/`x-request-id`; exportar con un *collector* OpenTelemetry delante de la malla es trabajo pendiente (`ROADMAP.md`).
+Reglas de alerta de ejemplo: `deploy/prometheus/alerts.yaml`. Logs JSON: `LOG_FORMAT=json` (por defecto en producción). `/healthz` (vida), `/readyz` (BD y cola), `/metrics` (con `METRICS_TOKEN`), `GET /api/v1/ops/health` (por organización: conectores caídos, tareas atascadas, cola, fallos de login/notificación). Trazas: se propagan `traceparent`/`x-request-id`; exportar con un *collector* OpenTelemetry delante de la malla es trabajo pendiente (`ROADMAP.md`).

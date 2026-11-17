@@ -13,13 +13,14 @@ python docs/tools/routes.py          # regenera la tabla de rutas de API_DOCUMEN
 ## Resultados medidos (2026-11-17, Windows 11, Node 24, un solo proceso)
 | Suite | Resultado | Notas |
 |---|---|---|
-| API sin servicios externos | **191 pasan, 30 omitidas** (221) | las omitidas necesitan Redis, PostgreSQL, moto, Terraform o el servicio Python |
-| API + PostgreSQL 16 real (Docker) | **199 pasan, 22 omitidas** | añade RLS, inmutabilidad (triggers), unicidad, dos réplicas, carreras |
-| API + PostgreSQL + Redis (medición anterior en la sesión) | **202 pasan, 21 omitidas** (223) | las 21 restantes necesitan moto (emulador AWS), Terraform y el contrato con Python |
-| Consola (Vitest) | 8 pasan | las vistas nuevas **no tienen pruebas unitarias ni Playwright**; solo compilan, pasan lint y se probaron las rutas de API que consumen |
+| API sin servicios externos | **≈195 pasan, ≈31 omitidas** | las omitidas necesitan Redis, PostgreSQL, moto, Terraform o el servicio Python |
+| **API con PostgreSQL 16 + Redis 7 + moto + servicio Python (Docker/venv)** | **224 pasan, 4 omitidas** (228) | las 4 omitidas necesitan el binario de Terraform. Añade RLS y triggers reales, dos réplicas, carreras, bloqueos Redis, adaptadores AWS contra moto, el conector AWS con el SDK real contra moto y el contrato Python↔TypeScript |
+| Consola (Vitest) | **17 pasan** | 9 pruebas nuevas de las vistas (estados reales de conectores, permisos, estados vacíos, datos ausentes) |
 | Analítica (pytest) | 8 pasan | medido al inicio de la sesión |
 | `npm run lint` | 0 avisos | |
 | Demo empresarial | 12 pasos, todas las aserciones | fuente **simulada** (`sim-edr`), ejecutor de laboratorio |
+
+moto emula la API de AWS; **no es AWS** (no reproduce todas sus reglas).
 
 Cobertura funcional nueva: autenticación y MFA (12), CTEM (18), IAM (5), conectores (12), casos/evidencia/correlación (9), SOAR (15), notificaciones (7), dashboard/informes/IA/privacidad/observabilidad (15), seguridad OWASP (10), PostgreSQL empresarial (3).
 
@@ -28,24 +29,20 @@ Cobertura funcional nueva: autenticación y MFA (12), CTEM (18), IAM (5), conect
 **No** se hizo pentest manual ni DAST contra una instancia desplegada.
 
 ## Rendimiento (sonda `npm run perf`)
-Metodología: proceso único, repositorios en memoria, sin red ni PostgreSQL, sin límite de tasa; 500 vulnerabilidades, 2 000 señales, 50 activos. Medición 2026-11-17:
+Metodología: proceso único, repositorios en memoria, sin red ni PostgreSQL, sin límite de tasa; 500 vulnerabilidades, 2 000 señales, 50 activos.
 
-| Escenario | Peticiones | Concurrencia | req/s | p50 ms | p95 ms |
-|---|---|---|---|---|---|
-| Crear 50 activos | 50 | 1 | 77 | 5,7 | 24,2 |
-| Crear 500 vulnerabilidades (cada una repriorizada con el grafo) | 500 | 1 | 72 | 12,4 | 27,4 |
-| Ingerir 2 000 señales en lotes de 500 (deduplicación + correlación + playbooks) | 4 | 1 | — | 2 361 | 3 219 |
-| `GET /vulns?limit=50` | 60 | 1 | 36 | 16,7 | 79,6 |
-| `GET /ctem/priorities` | 30 | 1 | 27 | 27,1 | 90,1 |
-| `GET /dashboard/executive` | 30 | 1 | 21 | 47 | 79 |
-| `GET /dashboard/executive` | 100 | 50 | 18 | 3 032 | 3 151 |
-| `GET /ctem/attack-paths` | 20 | 1 | 15 | 49,7 | 273 |
-| Informe PDF técnico | 5 | 1 | 4 | 235 | 360 |
-| Informe PDF ejecutivo | 5 | 1 | 19 | 51,5 | 56 |
+| Escenario | Antes de optimizar | Después | Cambio |
+|---|---|---|---|
+| Ingerir señales, lote de 500 (deduplicación + correlación + playbooks), p50 | 2 361 ms | **355 ms** | correlación indexada por atributo compartido (una carga por lote, no un escaneo por señal) |
+| Dashboard ejecutivo, 50 clientes concurrentes, p95 | 3 151 ms | **282 ms** | peticiones idénticas simultáneas comparten un cálculo; resultado reutilizado `DASHBOARD_CACHE_SEC` (5 s) |
+| `GET /vulns?limit=50`, p50 / p95 | 16,7 / 79,6 ms | 28,3 / 91,4 ms | sin cambios de código (variación de la máquina) |
+| `GET /ctem/priorities`, p50 | 27 ms | 33 ms | ídem |
+| Informe PDF técnico, p50 | 236 ms | ≈230 ms | |
 
-Memoria al final: ~1 GiB de heap (los repositorios en memoria clonan cada lectura).
+Nota: el dashboard secuencial de la segunda columna sale en 3 ms porque la caché de 5 s lo sirve; la medición honesta del cálculo en frío son los ≈47 ms de la primera.
+Memoria final ≈1 GiB de heap (los repositorios en memoria clonan cada lectura).
 
-**Lectura honesta**: son medidas de *este código en esta máquina*, no de capacidad. Hallazgos reales: (1) la ingesta de señales cuesta ~2,4 s por lote de 500 porque la correlación recorre todas las señales de la organización por cada señal nueva (O(n²)); (2) el dashboard y los listados cargan y filtran toda la organización en el proceso, por lo que con 50 clientes concurrentes la latencia se satura (CPU de un único hilo); (3) con PostgreSQL añadirá latencia de red. Acciones en `ROADMAP.md` (filtros/orden en SQL, índices por activo/IP, ventana acotada).
+**Lectura honesta**: son medidas de *este código en esta máquina*, no de capacidad. Siguen pendientes: filtros, orden y paginación de los listados en SQL (hoy cargan toda la organización en el proceso) y medir con PostgreSQL y red reales (`ROADMAP.md`).
 
 ## Límites de la verificación
 Conectores contra mocks de protocolo (no servicios reales) · imágenes, Helm y los workflows de CI no se ejecutaron · sin pruebas de carga sostenida ni de recuperación ante desastres · sin pruebas de accesibilidad formales.

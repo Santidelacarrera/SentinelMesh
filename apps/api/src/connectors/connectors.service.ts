@@ -103,6 +103,16 @@ export class ConnectorsService implements OnModuleInit, OnApplicationShutdown {
     return this.view(out);
   }
 
+  /** After rotating SECRETS_ENCRYPTION_KEY (old key kept in SECRETS_ENCRYPTION_KEY_PREVIOUS), re-seals every stored credential with the current key. */
+  async reencrypt(me: Pick<Principal, 'orgId' | 'userId'>) {
+    let connectors = 0, channels = 0;
+    for (const c of await this.db.connectors.list(me.orgId, (x) => !!x.credentialsEnc && this.box.needsRotation(x.credentialsEnc))) { await this.db.connectors.update(me.orgId, c.id, (r) => { r.credentialsEnc = this.box.encrypt(this.box.decrypt(c.credentialsEnc!, c.id), c.id); }); connectors++; }
+    for (const c of await this.db.channels.list(me.orgId, (x) => !!x.targetEnc && this.box.needsRotation(x.targetEnc))) { await this.db.channels.update(me.orgId, c.id, (r) => { r.targetEnc = this.box.encrypt(this.box.decrypt(c.targetEnc!, c.id), c.id); }); channels++; }
+    this.clients.clear();
+    await this.audit.append(me.orgId, me.userId, 'secrets.reencrypted', { connectors, channels });
+    return { connectors, channels };
+  }
+
   // ───────── runtime ─────────
   private runtime(c: ConnectorConfig, fetchImpl?: typeof fetch): ConnectorRuntime {
     if (!c.credentialsEnc) throw new BadRequestException('connector has no credentials');
