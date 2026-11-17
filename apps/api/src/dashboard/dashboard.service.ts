@@ -16,7 +16,21 @@ export class DashboardService {
    * Global risk (0-100) is a transparent sum, not a model: mean of the five highest open-vulnerability priorities (≤ 50 pts), + 5 per open
    * critical case (≤ 20), + 3 per confirmed open exposure (≤ 15), + 5 per privileged account without MFA (≤ 15).
    */
-  async executive(orgId: string, days = 30) {
+  private inflight = new Map<string, Promise<unknown>>();
+  private cache = new Map<string, { at: number; v: unknown }>();
+  /**
+   * Identical concurrent requests share one computation (no staleness), and the result is reused for DASHBOARD_CACHE_SEC (default 5 s,
+   * 0 under test) so a wall of console clients cannot make every one of them rescan the organisation.
+   */
+  async executive(orgId: string, days = 30): Promise<Awaited<ReturnType<DashboardService['compute']>>> {
+    const key = `${orgId}:${days}`, ttl = (process.env.NODE_ENV === 'test' ? 0 : Number(process.env.DASHBOARD_CACHE_SEC ?? 5)) * 1000, hit = this.cache.get(key);
+    if (ttl && hit && Date.now() - hit.at < ttl) return hit.v as never;
+    const running = this.inflight.get(key); if (running) return running as never;
+    const p = this.compute(orgId, days).then((v) => { if (ttl) this.cache.set(key, { at: Date.now(), v }); return v; }).finally(() => this.inflight.delete(key));
+    this.inflight.set(key, p); return p;
+  }
+
+  private async compute(orgId: string, days: number) {
     const [assets, vulns, cases, exposures, signals, ident, risks, runs, correlations, ch] = await Promise.all([this.db.inventory.list(orgId), this.db.vulns.list(orgId), this.db.cases.list(orgId), this.db.exposures.list(orgId), this.db.signals.list(orgId), this.db.identities.list(orgId), this.iam.risks(orgId), this.db.runs.list(orgId, (r) => r.status === 'awaiting_approval'), this.db.correlations.list(orgId), this.connectors.health(orgId)]);
     const openV = vulns.filter((v) => v.status === 'open' || v.status === 'in_progress'), top = [...openV].sort((a, b) => (b.priority?.score ?? 0) - (a.priority?.score ?? 0));
     const activeCases = cases.filter((c) => c.status !== 'closed' && c.status !== 'resolved'), openExp = exposures.filter((e) => e.status === 'open');

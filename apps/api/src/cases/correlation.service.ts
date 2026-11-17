@@ -39,12 +39,21 @@ export class CorrelationService implements OnModuleInit {
     return Math.round((1 - [...best.values()].reduce((p, c) => p * (1 - c), 1)) * 1000) / 1000;
   }
 
+  /** Shared-attribute keys of a signal: two signals can only be related if they share at least one. */
+  private static keys(s: Signal): string[] {
+    return [...(s.assetId ? [`a:${s.assetId}`] : []), ...(s.identityId ? [`i:${s.identityId}`] : []), ...s.ips.filter((i) => !PRIVATE_IP.test(i)).map((i) => `p:${i}`), ...s.domains.map((d) => `d:${d}`), ...s.cves.map((c) => `c:${c}`)];
+  }
+
+  /** Loads the organisation's signals once and indexes them by shared attribute, so a batch costs O(batch × matches) instead of a full scan per signal. */
   async correlate(orgId: string, fresh: Signal[]) {
-    const out: Correlation[] = [];
+    const out: Correlation[] = [], win = WINDOW_MS();
+    const all = new Map((await this.db.signals.list(orgId)).map((x) => [x.id, x])), index = new Map<string, Set<string>>();
+    for (const x of all.values()) for (const k of CorrelationService.keys(x)) (index.get(k) ?? index.set(k, new Set()).get(k)!).add(x.id);
     for (const s of fresh) {
-      const cur = (await this.db.signals.get(orgId, s.id)) ?? s;
+      const cur = all.get(s.id) ?? s;
       if (cur.correlationId) continue;
-      const near = (await this.db.signals.list(orgId, (x) => x.id !== cur.id && Math.abs(Date.parse(x.at) - Date.parse(cur.at)) <= WINDOW_MS()));
+      const ids = new Set<string>(); for (const k of CorrelationService.keys(cur)) for (const id of index.get(k) ?? []) ids.add(id);
+      const near = [...ids].filter((id) => id !== cur.id).map((id) => all.get(id)!).filter((x) => Math.abs(Date.parse(x.at) - Date.parse(cur.at)) <= win);
       const links = near.map((x) => ({ x, why: CorrelationService.reasons(cur, x) })).filter((l) => l.why.length);
       if (!links.length) continue;
       // join an existing correlation if any related signal already belongs to a live one; otherwise open a new one
@@ -55,6 +64,7 @@ export class CorrelationService implements OnModuleInit {
       const reasons = [...(group?.reasons ?? []), ...links.flatMap((l) => l.why)];
       const c = await this.build(orgId, group?.id, members, reasons);
       out.push(c);
+      for (const id of c.signalIds) { const m = all.get(id); if (m) m.correlationId = c.id; }
     }
     return out;
   }
