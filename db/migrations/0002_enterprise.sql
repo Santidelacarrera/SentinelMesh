@@ -53,5 +53,10 @@ DROP TRIGGER IF EXISTS evidence_immutable ON evidence_item;
 CREATE TRIGGER evidence_immutable BEFORE UPDATE OR DELETE ON evidence_item FOR EACH ROW EXECUTE FUNCTION evidence_guard();
 
 -- The app role cannot DELETE, except on transient tables that retention/erasure must purge.
-GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO sentinel_app;
-GRANT DELETE ON signal, notification_log, auth_session, password_reset, connector_run, exposure_finding TO sentinel_app;
+-- Role creation lives in db/roles.sql (it may run before or after this migration), so grants are conditional here and repeated there.
+DO $$ BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'sentinel_app') THEN
+    GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO sentinel_app;
+    GRANT DELETE ON signal, notification_log, auth_session, password_reset, connector_run, exposure_finding TO sentinel_app;
+  END IF;
+END $$;

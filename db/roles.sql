@@ -7,3 +7,9 @@ DO $$ BEGIN
 END $$;
 GRANT USAGE ON SCHEMA public TO sentinel_app;
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO sentinel_app;
+-- Tables created by later migrations that retention/erasure must be able to purge (no-op if a migration has not run yet).
+DO $$ DECLARE t text; BEGIN
+  FOREACH t IN ARRAY ARRAY['signal','notification_log','auth_session','password_reset','connector_run','exposure_finding'] LOOP
+    IF to_regclass('public.' || t) IS NOT NULL THEN EXECUTE format('GRANT DELETE ON %I TO sentinel_app', t); END IF;
+  END LOOP;
+END $$;
